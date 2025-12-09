@@ -136,23 +136,31 @@ print(f"Receptor uploaded: {receptor_filename}")
 
 
 # Step 2: Pocket Detection
-# nb.cells.append(new_markdown_cell("## 2. Pocket Detection (fpocket)"))
-# nb.cells.append(new_code_cell("""
-# import subprocess
-# 
-# # Run fpocket
-# print(f"Running fpocket on {receptor_filename}...")
-# subprocess.run(f"fpocket -f {receptor_filename}", shell=True, check=True)
-# 
-# output_folder = f"{receptor_filename}_out"
-# if os.path.exists(output_folder):
-#     print("fpocket finished successfully.")
-#     pockets_dir = os.path.join(output_folder, "pockets")
-#     pockets = [f for f in os.listdir(pockets_dir) if f.endswith(".pdb")]
-#     print(f"Found {len(pockets)} pockets.")
-# else:
-#     print("Error: fpocket output folder not found.")
-# """))
+nb.cells.append(new_markdown_cell("## 2. Pocket Detection (fpocket)"))
+nb.cells.append(new_code_cell("""
+#@title Run fpocket and Visualize
+import subprocess
+import os
+
+# Run fpocket
+# Note: fpocket should be in the path thanks to Step 0.2
+print(f"Running fpocket on {receptor_filename}...")
+try:
+    subprocess.run(f"fpocket -f {receptor_filename}", shell=True, check=True)
+except subprocess.CalledProcessError:
+    print("Error running fpocket. Checking path...")
+    print(subprocess.getoutput("which fpocket"))
+    raise
+
+output_folder = f"{receptor_filename}_out"
+if os.path.exists(output_folder):
+    print("fpocket finished successfully.")
+    pockets_dir = os.path.join(output_folder, "pockets")
+    pockets = [f for f in os.listdir(pockets_dir) if f.endswith(".pdb")]
+    print(f"Found {len(pockets)} pockets.")
+else:
+    print("Error: fpocket output folder not found.")
+"""))
 # 
 # # Step 3: Visualization & Selection
 # nb.cells.append(new_markdown_cell("## 3. Pocket Selection"))
