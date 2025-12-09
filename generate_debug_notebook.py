@@ -17,12 +17,6 @@ This notebook implements the FrankPEPstein pipeline for designing peptide fragme
 4.  Fragment Generation & Ranking
 """))
 
-# Optional: Factory Reset
-nb.cells.append(new_code_cell("""
-#@title Factory Reset (Uncomment and run to wipe runtime)
-# from google.colab import runtime
-# runtime.unassign()
-"""))
 
 # Step 0: Dependency Installation
 nb.cells.append(new_markdown_cell("## 0. Setup & Dependencies"))
@@ -58,7 +52,7 @@ print("CondaColab installed.")
 # 0.2 Main Setup
 nb.cells.append(new_code_cell("""
 #@title 0.2 Install Dependencies & Setup Tools
-#@markdown This cell clones the repository, installs bio-dependencies, and sets up external tools.
+#@markdown This cell clones the repository and creates the 'FrankPEPstein' environment with Python 3.10.
 
 import os
 import sys
@@ -71,11 +65,25 @@ if not os.path.exists("FrankPEPstein"):
 else:
     print("Repository already exists.")
 
-# --- 2. Install Core Bio-Dependencies ---
-print("Installing bio-dependencies (this may take a few minutes)...")
-!mamba install -q -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller
+# --- 2. Create Conda Environment 'FrankPEPstein' ---
+print("Creating 'FrankPEPstein' environment with Python 3.10 (this may take a few minutes)...")
+# Create environment with all dependencies including Modeller
+!mamba create -n FrankPEPstein -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller
 
-# --- 3. Setup External Tools & Config ---
+# --- 3. Configure Path for Colab Usage ---
+# Since Colab runs on the 'base' kernel, we need to manually add the new env to paths
+env_path = "/usr/local/envs/FrankPEPstein"
+site_packages = f"{env_path}/lib/python3.10/site-packages"
+
+if site_packages not in sys.path:
+    sys.path.append(site_packages)
+
+# Add binary path for tools like fpocket, obabel, etc.
+os.environ['PATH'] = f"{env_path}/bin:" + os.environ['PATH']
+
+print(f"Environment 'FrankPEPstein' created and configured.")
+
+# --- 4. Setup External Tools & Config ---
 repo_path = os.path.abspath("FrankPEPstein")
 if repo_path not in sys.path:
     sys.path.append(repo_path)
