@@ -4,6 +4,10 @@ from nbformat.v4 import new_notebook, new_markdown_cell, new_code_cell
 
 nb = new_notebook()
 
+# Read local notebook_utils.py for patching
+with open('scripts/notebook_utils.py', 'r') as f:
+    local_utils_content = f.read()
+
 # Title and Introduction
 nb.cells.append(new_markdown_cell("""
 # FrankPEPstein: Interactive Peptide Fragment Design
@@ -50,7 +54,7 @@ print("CondaColab installed.")
 """))
 
 # 0.2 Main Setup
-nb.cells.append(new_code_cell("""
+setup_code_src = """
 #@title 0.2 Install Dependencies & Setup Tools
 #@markdown This cell clones the repository and creates the 'FrankPEPstein' environment with Python 3.10.
 
@@ -83,6 +87,15 @@ os.environ['PATH'] = f"{env_path}/bin:" + os.environ['PATH']
 
 print(f"Environment 'FrankPEPstein' created and configured.")
 
+# --- PATCH: Update notebook_utils.py with local changes ---
+# This ensures we use the latest path logic without needing a git push
+patched_utils_content = r'''<<NOTEBOOK_UTILS_CONTENT>>'''
+
+os.makedirs("FrankPEPstein/scripts", exist_ok=True)
+with open("FrankPEPstein/scripts/notebook_utils.py", "w") as f:
+    f.write(patched_utils_content)
+print("Patched notebook_utils.py with latest local version.")
+
 # --- 4. Setup External Tools & Config ---
 repo_path = os.path.abspath("FrankPEPstein")
 if repo_path not in sys.path:
@@ -103,7 +116,11 @@ print("Configuring Modeller...")
 notebook_utils.configure_modeller()
 
 print("Setup Complete!")
-"""))
+"""
+
+# Inject local content
+setup_code_final = setup_code_src.replace("<<NOTEBOOK_UTILS_CONTENT>>", local_utils_content)
+nb.cells.append(new_code_cell(setup_code_final))
 
 # Step 1: File Upload
 nb.cells.append(new_markdown_cell("## 1. Input Data: Upload Receptor"))

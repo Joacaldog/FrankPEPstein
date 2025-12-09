@@ -29,7 +29,8 @@ def configure_modeller(license_key='MODELIRANJE', repo_dir='FrankPEPstein'):
         possible_paths = [
             f"{sys.prefix}/lib/modeller-*/modlib/modeller/config.py", # Standard standalone install
             f"{sys.prefix}/lib/python*/site-packages/modeller/config.py", # Site-packages install
-            f"{sys.prefix}/pkgs/modeller-*/lib/modeller-*/modlib/modeller/config.py" # Conda pkgs cache structure
+            f"{sys.prefix}/pkgs/modeller-*/lib/modeller-*/modlib/modeller/config.py", # Conda pkgs cache structure
+            "/usr/local/envs/FrankPEPstein/lib/modeller-*/modlib/modeller/config.py" # Targeted Conda Environment
         ]
         
         dest_config_paths = []
