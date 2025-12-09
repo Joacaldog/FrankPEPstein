@@ -1,6 +1,13 @@
-__pycache__/
+*.pyc
+__pycache__
 *.ipynb_checkpoints
 .DS_Store
-*.pyc
 .vscode/
 .gemini/
+work_dir/
+run_frankpepstein/
+*.pdb
+utilities/*.tar.gz
+!utilities/Click.tar.gz
+DB/*.tar.gz
+DB/reduce_wwPDB_het_dict.txt
