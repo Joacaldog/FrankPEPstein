@@ -21,13 +21,6 @@ print("Installing dependencies in base environment (matches Colab kernel)...")
 # --- 3. Run Notebook Setup Utils ---
 print(f"Dependencies installed.")
 
-# Inject local content (simulated patch for copy-paste)
-# In a real copy-paste scenario, the user might not have the patched file content embedded.
-# But we assume the repo clone gets the standard util, unless we patch it.
-# We will use the standard import for simplicity in this snippet, assuming repo is up to date or patch isn't critical for this step (Modeller path might need check).
-
-# Wait, if we use base env, the Modeller path in notebook_utils.py needs to find it in base!
-# We might need to patch notebook_utils.py again to look in /usr/local/ (base prefix)
 repo_path = os.path.abspath("FrankPEPstein")
 if repo_path not in sys.path:
     sys.path.append(repo_path)
