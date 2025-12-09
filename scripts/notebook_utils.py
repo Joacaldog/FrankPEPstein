@@ -11,18 +11,37 @@ def configure_modeller(license_key='MODELIRANJE', repo_dir='FrankPEPstein'):
     # Template location in the repo
     template_config = os.path.join(repo_dir, "utilities/config.py")
     
-    # Search for config.py in multiple possible locations
-    possible_paths = [
-        f"{sys.prefix}/lib/modeller-*/modlib/modeller/config.py", # Standard standalone install
-        f"{sys.prefix}/lib/python*/site-packages/modeller/config.py" # Site-packages install
-    ]
+    # Try using python import to find the location
+    dest_config = None
+    try:
+        import modeller
+        modeller_path = os.path.dirname(modeller.__file__)
+        candidate = os.path.join(modeller_path, "config.py")
+        if os.path.exists(candidate):
+            dest_config = candidate
+    except Exception:
+        # Modeller raises an error on import if not configured, which is expected.
+        # We just want to find where it is installed.
+        pass
+
+    # Fallback to search if import finding failed
+    if not dest_config:
+        possible_paths = [
+            f"{sys.prefix}/lib/modeller-*/modlib/modeller/config.py", # Standard standalone install
+            f"{sys.prefix}/lib/python*/site-packages/modeller/config.py", # Site-packages install
+            f"{sys.prefix}/pkgs/modeller-*/lib/modeller-*/modlib/modeller/config.py" # Conda pkgs cache structure
+        ]
+        
+        dest_config_paths = []
+        for pattern in possible_paths:
+            found = glob.glob(pattern)
+            dest_config_paths.extend(found)
+        
+        if dest_config_paths:
+            dest_config = dest_config_paths[0]
+
     
-    dest_config_paths = []
-    for pattern in possible_paths:
-        dest_config_paths.extend(glob.glob(pattern))
-    
-    if dest_config_paths and os.path.exists(template_config):
-        dest_config = dest_config_paths[0]
+    if dest_config and os.path.exists(template_config):
         print(f"Found modeller config at: {dest_config}")
         print(f"Using template {template_config} to update {dest_config}")
         
@@ -37,7 +56,7 @@ def configure_modeller(license_key='MODELIRANJE', repo_dir='FrankPEPstein'):
         print("Modeller configured successfully.")
         return True
     else:
-        print("Error: Modeller config destination or template not found.")
+        print(f"Error: Modeller config destination ({dest_config}) or template ({template_config}) not found.")
         return False
 
 def get_pocket_box(pdb_file):
