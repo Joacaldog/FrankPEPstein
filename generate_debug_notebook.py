@@ -69,23 +69,14 @@ if not os.path.exists("FrankPEPstein"):
 else:
     print("Repository already exists.")
 
-# --- 2. Create Conda Environment 'FrankPEPstein' ---
-print("Creating 'FrankPEPstein' environment with Python 3.10 (this may take a few minutes)...")
-# Create environment with all dependencies including Modeller
-!mamba create -n FrankPEPstein -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller
+# --- 2. Install Dependencies (Base Environment) ---
+print("Installing dependencies in base environment (matches Colab kernel)...")
+# Using 'mamba install' installs into the active environment (base)
+!mamba install -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller
 
-# --- 3. Configure Path for Colab Usage ---
-# Since Colab runs on the 'base' kernel, we need to manually add the new env to paths
-env_path = "/usr/local/envs/FrankPEPstein"
-site_packages = f"{env_path}/lib/python3.10/site-packages"
-
-if site_packages not in sys.path:
-    sys.path.append(site_packages)
-
-# Add binary path for tools like fpocket, obabel, etc.
-os.environ['PATH'] = f"{env_path}/bin:" + os.environ['PATH']
-
-print(f"Environment 'FrankPEPstein' created and configured.")
+# --- 3. Configure Path ---
+# No need to append site-packages or bin path as we are in the active env
+print(f"Dependencies installed in base environment.")
 
 # --- PATCH: Update notebook_utils.py with local changes ---
 # This ensures we use the latest path logic without needing a git push
@@ -122,116 +113,178 @@ print("Setup Complete!")
 setup_code_final = setup_code_src.replace("<<NOTEBOOK_UTILS_CONTENT>>", local_utils_content)
 nb.cells.append(new_code_cell(setup_code_final))
 
-# Step 1: File Upload
-nb.cells.append(new_markdown_cell("## 1. Input Data: Upload Receptor"))
+# Step 1-3: Input, Detection, and Selection (Combined)
+nb.cells.append(new_markdown_cell("## 1. Input & Pocket Selection"))
 nb.cells.append(new_code_cell("""
-from google.colab import files
+#@title Select Receptor & Detect Pockets
+#@markdown **Instructions:**
+#@markdown 1. Upload your Receptor PDB.
+#@markdown 2. Choose Mode: **Auto Detect** (runs fpocket) or **Manual Upload** (upload your specific pocket PDB).
+#@markdown 3. Select the pocket from the dropdown to visualize.
+
 import os
-
-print("Upload your Receptor PDB file (e.g., receptor.pdb)")
-uploaded = files.upload()
-receptor_filename = list(uploaded.keys())[0]
-print(f"Receptor uploaded: {receptor_filename}")
-"""))
-
-
-# Step 2: Pocket Detection
-nb.cells.append(new_markdown_cell("## 2. Pocket Detection (fpocket)"))
-nb.cells.append(new_code_cell("""
-#@title Run fpocket and Visualize
 import subprocess
-import os
+import py3Dmol
+import ipywidgets as widgets
+from google.colab import files
+from IPython.display import display
 
-# Run fpocket
-# Note: fpocket should be in the path thanks to Step 0.2
-print(f"Running fpocket on {receptor_filename}...")
-try:
-    subprocess.run(f"fpocket -f {receptor_filename}", shell=True, check=True)
-except subprocess.CalledProcessError:
-    print("Error running fpocket. Checking path...")
-    print(subprocess.getoutput("which fpocket"))
-    raise
+# --- configuration ---
+detection_mode = "Auto Detect" #@param ["Auto Detect", "Manual Upload"]
 
-# Robust output folder detection
-base_name = os.path.splitext(receptor_filename)[0]
-possible_folders = [
-    f"{receptor_filename}_out",      # e.g. 1tig.pdb_out
-    f"{base_name}_out"               # e.g. 1tig_out (standard behavior)
-]
+# Global variables for next steps
+receptor_filename = None
+pockets_dir = "pockets_upload" # Default for manual
+final_pockets_list = []
 
-output_folder = None
-for folder in possible_folders:
-    if os.path.exists(folder):
-        output_folder = folder
-        break
+# --- 1. Upload Receptor ---
+print(f"--- Upload Receptor PDB ({detection_mode}) ---")
+uploaded_r = files.upload()
 
-if output_folder:
-    print(f"fpocket finished successfully. Output in: {output_folder}")
-    pockets_dir = os.path.join(output_folder, "pockets")
-    if os.path.exists(pockets_dir):
-        pockets = [f for f in os.listdir(pockets_dir) if f.endswith(".pdb")]
-        print(f"Found {len(pockets)} pockets.")
-    else:
-        print(f"Warning: 'pockets' subdirectory not found in {output_folder}")
+if not uploaded_r:
+    print("No receptor file uploaded.")
 else:
-    print("Error: fpocket output folder not found. Listing current directory:")
-    subprocess.run("ls -F", shell=True)
-"""))
-# 
-# # Step 3: Visualization & Selection
-# nb.cells.append(new_markdown_cell("## 3. Pocket Selection"))
-# nb.cells.append(new_code_cell("""
-# import py3Dmol
-# import ipywidgets as widgets
-# from IPython.display import display
-# 
-# # Simple Pocket Selector Widget
-# pocket_dropdown = widgets.Dropdown(
-#     options=sorted(pockets),
-#     description='Select Pocket:',
-#     disabled=False,
-# )
-# 
-# def view_pocket(pocket_file):
-#     view = py3Dmol.view(width=800, height=600)
-#     
-#     # Load Receptor
-#     with open(receptor_filename, 'r') as f:
-#         view.addModel(f.read(), "pdb")
-#     view.setStyle({'cartoon': {'color': 'white'}})
-#     
-#     # Load Selected Pocket (Red spheres)
-#     pocket_path = os.path.join(pockets_dir, pocket_file)
-#     with open(pocket_path, 'r') as f:
-#         view.addModel(f.read(), "pdb")
-#     view.setStyle({'model': -1}, {'sphere': {'color': 'red', 'opacity': 0.7}})
-#     
-#     view.zoomTo()
-#     view.show()
-# 
-# # Link widget to view
-# widgets.interactive(view_pocket, pocket_file=pocket_dropdown)
-# """))
+    receptor_filename = list(uploaded_r.keys())[0]
+    print(f"Receptor: {receptor_filename}")
+
+    # --- 2. Pocket Handling ---
+    if detection_mode == "Auto Detect":
+        print(f"\\nRunning fpocket on {receptor_filename}...")
+        try:
+            # Fix: Quotes for filenames with spaces
+            subprocess.run(f"fpocket -f '{receptor_filename}'", shell=True, check=True)
+            
+            # Robust folder finding
+            base_name = os.path.splitext(receptor_filename)[0]
+            possible_folders = [f"{receptor_filename}_out", f"{base_name}_out"]
+            output_folder = next((f for f in possible_folders if os.path.exists(f)), None)
+
+            if output_folder:
+                pockets_dir = os.path.join(output_folder, "pockets")
+                if os.path.exists(pockets_dir):
+                    final_pockets_list = [f for f in os.listdir(pockets_dir) if f.endswith(".pdb")]
+                    print(f"Auto-detection finished. Found {len(final_pockets_list)} pockets.")
+                else:
+                    print("Warning: pockets subdirectory not found.")
+            else:
+                print("Error: fpocket output not found.")
+                
+        except subprocess.CalledProcessError:
+             print("Error running fpocket.")
+
+    elif detection_mode == "Manual Upload":
+        print(f"\\n--- Upload Manual Pocket PDB ---")
+        os.makedirs(pockets_dir, exist_ok=True)
+        uploaded_p = files.upload()
+        if uploaded_p:
+            for p_file in uploaded_p.keys():
+                # Move to a pockets folder to keep structure consistent
+                os.rename(p_file, os.path.join(pockets_dir, p_file))
+                final_pockets_list.append(p_file)
+            print(f"Manual upload finished. Available pockets: {len(final_pockets_list)}")
+
+    # --- 3. Visualization & Selection ---
+    if final_pockets_list:
+        print("\\n--- Pocket Selection & Visualization ---")
+        
+        pocket_dropdown = widgets.Dropdown(
+            options=sorted(final_pockets_list),
+            description='Select Pocket:',
+            disabled=False,
+        )
+
+        def view_pocket(pocket_file):
+            view = py3Dmol.view(width=800, height=600)
+            
+            # 1. Receptor Surface (White, Transparent)
+            with open(receptor_filename, 'r') as f:
+                view.addModel(f.read(), "pdb")
+            view.setStyle({}) 
+            view.addSurface(py3Dmol.SES, {'opacity': 0.8, 'color': 'white'})
+            
+            # 2. Selected Pocket (Red Spheres)
+            full_path = os.path.join(pockets_dir, pocket_file)
+            if os.path.exists(full_path):
+                with open(full_path, 'r') as f:
+                    view.addModel(f.read(), "pdb")
+                view.setStyle({'model': -1}, {'sphere': {'color': 'red', 'opacity': 0.7}})
+            else:
+                print(f"Error: Could not find {full_path}")
+
+            view.zoomTo()
+            view.show()
+            
+        display(widgets.interactive(view_pocket, pocket_file=pocket_dropdown))
+    else:
+        print("No pockets available to select.")
+""", metadata={"cellView": "form"}))
 # 
 # # Step 4: Pocket Extraction
-# nb.cells.append(new_markdown_cell("## 4. Pocket Extraction & Superposer Prep"))
-# nb.cells.append(new_code_cell("""
-# # Extract selected pocket coordinates and size
-# selected_pocket_file = pocket_dropdown.value
-# print(f"Selected: {selected_pocket_file}")
-# 
-# # Logic to parse extraction (Simulated based on known file format)
-# # In reality, we might read the PDB and calculate min/max coordinates
-# # For now, we will assume generic values or implement a simple parser
-# 
-# def get_box_center_size(pdb_file):
-#     # This is a placeholder for the actual logic to get box center/size
-#     # You would use BioPython here
-#     return (0, 0, 0), (20, 20, 20)
-# 
-# center, size = get_box_center_size(os.path.join(pockets_dir, selected_pocket_file))
-# print(f"Box Center: {center}, Size: {size}")
-# """))
+nb.cells.append(new_markdown_cell("## 4. Pocket Extraction & Superposer Prep"))
+nb.cells.append(new_code_cell("""
+#@title 4. Pocket Extraction & Box Generation
+#@markdown This step extracts the selected pocket and calculates the grid box center and size.
+
+import os
+from Bio.PDB import PDBParser, PDBIO, Select
+
+# --- Configuration ---
+try:
+    selected_pocket_file = pocket_dropdown.value
+    print(f"Selected Pocket File: {selected_pocket_file}")
+    
+    pocket_path = os.path.join(pockets_dir, selected_pocket_file)
+    print(f"Pocket Path: {pocket_path}")
+    
+except NameError:
+    print("Error: 'pocket_dropdown' or 'pockets_dir' not defined. Did you run the previous cell?")
+
+# --- Helper Functions ---
+def get_box_center_size(pdb_file, buffer=0.0):
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure("pocket", pdb_file)
+    coords = []
+    
+    for model in structure:
+        for chain in model:
+            for residue in chain:
+                for atom in residue:
+                    coords.append(atom.get_coord())
+    
+    if not coords:
+        return None, None
+
+    min_coord = [min([c[i] for c in coords]) for i in range(3)]
+    max_coord = [max([c[i] for c in coords]) for i in range(3)]
+    
+    center = [(min_coord[i] + max_coord[i]) / 2 for i in range(3)]
+    size = [(max_coord[i] - min_coord[i]) + buffer for i in range(3)]
+    
+    return center, size
+
+# --- Main Extraction Logic ---
+if os.path.exists(pocket_path):
+    print("Calculating box parameters...")
+    center, size = get_box_center_size(pocket_path, buffer=10.0) 
+    
+    if center:
+        center_str = f"{center[0]:.3f} {center[1]:.3f} {center[2]:.3f}"
+        size_str = f"{size[0]:.3f} {size[1]:.3f} {size[2]:.3f}"
+        
+        print("-" * 30)
+        print(f"Box Center: {center_str}")
+        print(f"Box Size:   {size_str}")
+        print("-" * 30)
+        
+        box_center = center
+        box_size = size
+        print("Pocket parameters ready for FrankPEPstein.")
+        
+    else:
+        print("Error: Could not calculate coordinates from pocket file.")
+else:
+    print(f"Error: Pocket file not found at {pocket_path}")
+"""))
 # 
 # # Step 5: Superposer
 # nb.cells.append(new_markdown_cell("## 5. Superposer (Fragment Generation)"))
