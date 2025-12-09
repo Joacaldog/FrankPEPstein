@@ -8,7 +8,7 @@ import subprocess
 # --- 1. Clone Repository ---
 if not os.path.exists("FrankPEPstein"):
     print("Cloning repository...")
-    !git clone https://github.com/Joacaldog/FrankPEPstein.git
+    subprocess.run("git clone https://github.com/Joacaldog/FrankPEPstein.git", shell=True, check=True)
 else:
     print("Repository already exists.")
 
@@ -16,7 +16,7 @@ else:
 print("Installing dependencies in base environment (matches Colab kernel)...")
 # Using 'mamba install' installs into the active environment (base)
 # This prevents Bio.PDB.ccealign errors due to binary incompatibility between envs
-!mamba install -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller
+subprocess.run("mamba install -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller", shell=True, check=True)
 
 # --- 3. Run Notebook Setup Utils ---
 print(f"Dependencies installed.")
