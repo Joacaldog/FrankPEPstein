@@ -32,10 +32,13 @@ for folder in next(os.walk('.'))[1]:
     if not os.path.isfile(receptor_path):
         print(f"No receptor.pdb file in folder {folder}")
         continue
+
     pep_size = count_residues_in_chain(f"peptide.pdb")
     base_path = os.path.join(initial_path, folder, "superpockets_residuesAligned3_RMSD0.1/top_10_patches")
     pep_tsv = f"{base_path}/frankPEPstein_{pep_size}/top_1_peps/top1_peps.tsv"
     pep_dir = f"{base_path}/frankPEPstein_{pep_size}/top_1_peps/"
+    scripts_dir = os.path.dirname(os.path.realpath(__file__))
+
     if os.path.isdir(base_path):
         if not os.path.exists(pep_tsv):
             print("Running complex --->", folder)
@@ -44,11 +47,11 @@ for folder in next(os.walk('.'))[1]:
                 print("No patches files in folder")
             if len([x for x in os.listdir(".") if "patch_file" in x]) > 1:
                 print(f"Running patch_clustering with kmer: {pep_size} ")
-                os.system(f'python3 ~/scripts/patch_clustering_V8.7.py -w {pep_size} -t 36')
+                os.system(f'python3 "{scripts_dir}/patch_clustering_V8.7.py" -w {pep_size} -t 36')
                 os.chdir(f"frankPEPstein_{pep_size}")
                 os.system(f'cp ../../../receptor.pdb .')
-                print('python3 ~/scripts/frankVINA_V3.py receptor.pdb 36 1')
-                os.system(f'python3 ~/scripts/frankVINA_V3.py receptor.pdb 36 1')
+                # print(f'python3 "{scripts_dir}/frankVINA_V3.py" receptor.pdb 36 1')
+                os.system(f'python3 "{scripts_dir}/frankVINA_V3.py" receptor.pdb 36 1')
                 os.system("rm * 2> /dev/null")
             if len([x for x in os.listdir(".") if "patch_file" in x]) == 1:
                 print("Only one patch file in folder")

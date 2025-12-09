@@ -51,15 +51,26 @@ def scoring_filter():
     # return file_list
 
 
+def get_reduce_dict_path():
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    # Try generic relative path first (standard repo structure)
+    dict_path = os.path.abspath(os.path.join(script_dir, "../DB/reduce_wwPDB_het_dict.txt"))
+    if os.path.exists(dict_path):
+        return f'"{dict_path}"'
+    
+    # Fallback to local or env var if needed, or just return filename if in PATH
+    return "reduce_wwPDB_het_dict.txt"
+
 def main():
-    os.system(f"reduce -Quiet -DB \"/mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/scripts/reduce_wwPDB_het_dict.txt\" {receptor_file} 1> H_{receptor_file} 2> /dev/null")
+    reduce_dict = get_reduce_dict_path()
+    os.system(f"reduce -Quiet -DB {reduce_dict} {receptor_file} 1> H_{receptor_file} 2> /dev/null")
     os.system(f"sed -i '/END/d' H_{receptor_file}")
     os.system(f'prepare_receptor -r H_{receptor_file} -o {receptor_file}qt 1> /dev/null 2> /dev/null')
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")
     def vina_scorer(file):
         if fnmatch.fnmatch(file, 'patch_file*.pdb'):
-            os.system(f"reduce -Quiet -DB \"/mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/scripts/reduce_wwPDB_het_dict.txt\" {file} 1> H_{file} 2> /dev/null")
+            os.system(f"reduce -Quiet -DB {reduce_dict} {file} 1> H_{file} 2> /dev/null")
             # os.system(f'prepare_ligand -A bonds,bonds_hydrogens,hydrogens -g -l H_{file} -o {file.replace(".pdb", ".pdbqt")} 1> /dev/null 2> /dev/null')
             os.system(f'prepare_ligand -l H_{file} -o {file.replace(".pdb", ".pdbqt")} 1> /dev/null 2> /dev/null')
             os.system(f'vina --verbosity 0 --autobox --local_only --receptor {receptor_file}qt --ligand {file}qt > {file.replace(".pdb", "")}.log')

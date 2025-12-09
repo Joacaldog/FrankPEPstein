@@ -113,13 +113,24 @@ def scoring_filter():
                 patch_file = selected[1].replace(".log", ".pdb")
                 run_cmd(f"mv MinPEP_{patch_file.replace('.pdb', '')}_out.pdbqt {folder_output3} 2> /dev/null")
 
+
+def get_reduce_dict_path():
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    # Try generic relative path first (standard repo structure)
+    dict_path = os.path.abspath(os.path.join(script_dir, "../DB/reduce_wwPDB_het_dict.txt"))
+    if os.path.exists(dict_path):
+        return f'"{dict_path}"'
+    
+    # Fallback to local or env var if needed, or just return filename if in PATH
+    return "reduce_wwPDB_het_dict.txt"
+
 def main():
     # 1) Crear temp_folder
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")
 
-    # reduce receptor
-    run_cmd(f"reduce -Quiet -DB \"/mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/scripts/reduce_wwPDB_het_dict.txt\" {receptor_file} 1> temp_folder/H_{receptor_file} 2> /dev/null")
+    reduce_dict = get_reduce_dict_path()
+    run_cmd(f"reduce -Quiet -DB {reduce_dict} {receptor_file} 1> temp_folder/H_{receptor_file} 2> /dev/null")
 
     os.chdir("temp_folder")
     run_cmd(f"sed -i '/END/d' H_{receptor_file} ; prepare_receptor -r H_{receptor_file} -o MinREC_{receptor_file}qt 1> /dev/null 2> /dev/null")
@@ -139,9 +150,10 @@ def main():
             complex_file = f"complex_{min_file.replace('.pdb','')}"
             minimization(complex_file, "prot")
             complex_min_file = f'{complex_file}_min.pdb'
+            reduce_dict = get_reduce_dict_path()
             run_cmd(
                 f'cat {complex_min_file} | grep " x " | grep -v "TER" 1> MinPEP_{min_file} 2> /dev/null ; '
-                f'reduce -Quiet -DB /mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/scripts/reduce_wwPDB_het_dict.txt MinPEP_{min_file} 1> H_MinPEP_{min_file} 2> /dev/null ; '
+                f'reduce -Quiet -DB {reduce_dict} MinPEP_{min_file} 1> H_MinPEP_{min_file} 2> /dev/null ; '
                 f"sed -i '/END/d' H_MinPEP_{min_file} ; "
                 f"prepare_ligand -l H_MinPEP_{min_file} -o MinPEP_{min_file.replace('.pdb', '.pdbqt')} 1> /dev/null 2> /dev/null"
             )
