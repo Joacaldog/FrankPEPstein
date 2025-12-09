@@ -87,3 +87,128 @@ def patch_scripts(scripts_dir, path_replacements):
                 print(f"Patched {script_name}")
                 count += 1
     return count
+
+def setup_external_tools(drive_ids=None):
+    """
+    Sets up external tools (ADFR, Click, DB).
+    If drive_ids is provided, downloads missing files from Google Drive.
+    """
+    import subprocess
+    
+    # Ensure gdown is installed
+    try:
+        import gdown
+    except ImportError:
+        print("Installing gdown...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "gdown"], check=True)
+        import gdown
+
+    base_dir = "FrankPEPstein"
+    # Adjust base_dir if we are running from root vs inside scripts?
+    # The utils assume repo_dir='FrankPEPstein' usually implies subfolder.
+    # But if looking for "utilities", it usually expects to find them relative to CWD?
+    # Let's check config.
+    # In notebook setup: repo_path = os.path.abspath("FrankPEPstein").
+    # If we run cell_01_setup.py from FrankPEPstein root, base_dir "FrankPEPstein" might be wrong if we are IN it?
+    # notebook_utils.py:
+    #   configure_modeller default repo_dir='FrankPEPstein'.
+    #   BUT when running locally in the repo, 'FrankPEPstein' folder DOES NOT EXIST inside 'FrankPEPstein'.
+    #   The repo IS the cwd.
+    #   When cloning in Colab: cwd is /content/, repo is /content/FrankPEPstein.
+    #   So 'FrankPEPstein/utilities' is correct there.
+    #   But LOCALLY, if I am in ~/FrankPEPstein/, 'FrankPEPstein/utilities' does not exist. 'utilities' exists.
+    
+    # I need to handle this path difference!
+    
+    if os.path.exists("utilities"):
+        # We are likely INSIDE the repo root (Local execution)
+        base_dir = "."
+    elif os.path.exists("FrankPEPstein/utilities"):
+        # We are likely in parent dir (Colab default)
+        base_dir = "FrankPEPstein"
+    else:
+        # Fallback or create?
+        base_dir = "FrankPEPstein" # Default to colab behavior for safety, or create it.
+
+    utilities_dir = os.path.join(base_dir, "utilities")
+    db_dir = os.path.join(base_dir, "DB")
+    
+    os.makedirs(utilities_dir, exist_ok=True)
+    os.makedirs(db_dir, exist_ok=True)
+
+    # File definitions
+    files = {
+        "adfr": {
+            "path": os.path.join(utilities_dir, "ADFRsuite_x86_64Linux_1.0.tar.gz"),
+            "id_key": "adfr_id",
+            "extract_cmd": f"tar -xzf {{}} -C {utilities_dir}",
+            "bin_path": os.path.join(os.path.abspath(utilities_dir), "ADFRsuite_x86_64Linux_1.0/bin") 
+        },
+        "click": {
+            "path": os.path.join(utilities_dir, "Click.tar.gz"),
+            "id_key": "click_id",
+            "extract_cmd": f"tar -xzf {{}} -C {utilities_dir}",
+            "bin_path": os.path.join(os.path.abspath(utilities_dir), "Click/bin")
+        },
+        "db": {
+            "path": os.path.join(db_dir, "minipockets_surface80_winsize3_size3_curated-db.tar.gz"),
+            "id_key": "db_id",
+            "extract_cmd": f"tar -xzf {{}} -C {db_dir}"
+        },
+        "dict": {
+            "path": os.path.join(db_dir, "reduce_wwPDB_het_dict.tar.gz"), 
+            "id_key": "dict_id",
+            "extract_cmd": f"tar -xzf {{}} -C {db_dir}"
+        }
+    }
+
+    if drive_ids is None:
+        drive_ids = {}
+
+    for name, info in files.items():
+        if not os.path.exists(info["path"]):
+            # Check if we have an ID to download
+            file_id = drive_ids.get(info["id_key"])
+            if file_id:
+                print(f"Downloading {name}...")
+                url = f'https://drive.google.com/uc?id={file_id}'
+                gdown.download(url, info["path"], quiet=False)
+            else:
+                pass
+                # print(f"WARNING: {name} file not found and no ID provided for download.")
+        
+        # Extract if exists
+        # Check extraction marker? Or just checking if extracted dir exists?
+        # For tarballs, usually they extract a folder.
+        # ADFR -> ADFRsuite_x86_64Linux_1.0
+        # Click -> Click
+        # DB -> minipockets (maybe?)
+        
+        # Simple heuristic: If tarball exists, run extract.
+        # Ideally check if destination exists.
+        
+        should_extract = False
+        if os.path.exists(info["path"]):
+             should_extract = True
+             # Optimization: Check if bin_path exists?
+             if "bin_path" in info and os.path.exists(info["bin_path"]):
+                 should_extract = False
+        
+        if should_extract:
+            print(f"Extracting {name}...")
+            subprocess.run(info["extract_cmd"].format(info["path"]), shell=True, check=True)
+            
+        # Add to PATH if needed
+        if "bin_path" in info and os.path.exists(info["bin_path"]):
+            os.environ['PATH'] += f":{info['bin_path']}"
+            if name == "click":
+                    subprocess.run(f"chmod +x {info['bin_path']}/click", shell=True)
+            print(f"Added {name} to PATH: {info['bin_path']}")
+    
+    # Handle dictionary txt
+    dict_txt = os.path.join(db_dir, "reduce_wwPDB_het_dict.txt")
+    if os.path.exists(dict_txt):
+        print("Dictionary txt found.")
+    else:
+        print("WARNING: reduce_wwPDB_het_dict.txt not found (maybe inside another folder after extraction?)")
+
