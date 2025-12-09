@@ -152,14 +152,30 @@ except subprocess.CalledProcessError:
     print(subprocess.getoutput("which fpocket"))
     raise
 
-output_folder = f"{receptor_filename}_out"
-if os.path.exists(output_folder):
-    print("fpocket finished successfully.")
+# Robust output folder detection
+base_name = os.path.splitext(receptor_filename)[0]
+possible_folders = [
+    f"{receptor_filename}_out",      # e.g. 1tig.pdb_out
+    f"{base_name}_out"               # e.g. 1tig_out (standard behavior)
+]
+
+output_folder = None
+for folder in possible_folders:
+    if os.path.exists(folder):
+        output_folder = folder
+        break
+
+if output_folder:
+    print(f"fpocket finished successfully. Output in: {output_folder}")
     pockets_dir = os.path.join(output_folder, "pockets")
-    pockets = [f for f in os.listdir(pockets_dir) if f.endswith(".pdb")]
-    print(f"Found {len(pockets)} pockets.")
+    if os.path.exists(pockets_dir):
+        pockets = [f for f in os.listdir(pockets_dir) if f.endswith(".pdb")]
+        print(f"Found {len(pockets)} pockets.")
+    else:
+        print(f"Warning: 'pockets' subdirectory not found in {output_folder}")
 else:
-    print("Error: fpocket output folder not found.")
+    print("Error: fpocket output folder not found. Listing current directory:")
+    subprocess.run("ls -F", shell=True)
 """))
 # 
 # # Step 3: Visualization & Selection
