@@ -12,3 +12,4 @@ utilities/*.tar.gz
 DB/*.tar.gz
 DB/reduce_wwPDB_het_dict.txt.tar.gz
 DB/reduce_wwPDB_het_dict.txt
+utilities/ADFRsuite_x86_64Linux_1.0
