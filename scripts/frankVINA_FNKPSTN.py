@@ -52,17 +52,17 @@ def scoring_filter():
 
 
 def main():
-    os.system(f"reduce -Quiet -DB /home/jgutierrez/scripts/reduce_wwPDB_het_dict.txt {receptor_file} 1> H_{receptor_file} 2> /dev/null")
+    os.system(f"reduce -Quiet -DB \"/mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/scripts/reduce_wwPDB_het_dict.txt\" {receptor_file} 1> H_{receptor_file} 2> /dev/null")
     os.system(f"sed -i '/END/d' H_{receptor_file}")
     os.system(f'prepare_receptor -r H_{receptor_file} -o {receptor_file}qt 1> /dev/null 2> /dev/null')
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")
     def vina_scorer(file):
         if fnmatch.fnmatch(file, 'patch_file*.pdb'):
-            os.system(f"reduce -Quiet -DB /home/jgutierrez/scripts/reduce_wwPDB_het_dict.txt {file} 1> H_{file} 2> /dev/null")
+            os.system(f"reduce -Quiet -DB \"/mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/scripts/reduce_wwPDB_het_dict.txt\" {file} 1> H_{file} 2> /dev/null")
             # os.system(f'prepare_ligand -A bonds,bonds_hydrogens,hydrogens -g -l H_{file} -o {file.replace(".pdb", ".pdbqt")} 1> /dev/null 2> /dev/null')
             os.system(f'prepare_ligand -l H_{file} -o {file.replace(".pdb", ".pdbqt")} 1> /dev/null 2> /dev/null')
-            os.system(f'/home/jgutierrez/utilities/./vina_1.2.4_linux_x86_64 --verbosity 0 --autobox --local_only --receptor {receptor_file}qt --ligand {file}qt > {file.replace(".pdb", "")}.log')
+            os.system(f'vina --verbosity 0 --autobox --local_only --receptor {receptor_file}qt --ligand {file}qt > {file.replace(".pdb", "")}.log')
             os.system(f'mv {file.replace(".pdb", "_out.pdbqt")} {file.replace(".pdb", "")}.log temp_folder')
             os.system(f'rm H_{file} {file}qt 2> /dev/null')
 

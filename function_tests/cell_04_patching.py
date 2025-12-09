@@ -43,4 +43,9 @@ def run_patching(pockets_dir="work_dir/receptor.pdb_out/pockets", selected_pocke
     return center, size
 
 if __name__ == "__main__":
-    run_patching()
+    if len(sys.argv) > 2:
+        run_patching(sys.argv[1], sys.argv[2])
+    elif len(sys.argv) > 1:
+        run_patching(sys.argv[1])
+    else:
+        run_patching()

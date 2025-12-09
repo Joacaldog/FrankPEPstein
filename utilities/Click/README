@@ -1,0 +1,36 @@
+CLICK IS CURRENTLY COMPILED BY UBUNTU
+
+*****************************************************************
+
+           INSTRUCTIONS
+          
+1. Extract Click.tar.gz and change directories to Click
+
+2. If users want to incorporate side-chain solvent accessibility and secondary structure features for CLICK, please install Modeller and run step 3. Otherwise goto step 4:
++  Install Modeller 9.10 available at http://salilab.org/modeller/release.html
+
++  If users use a different version than Modeller 9.10, please change the command mod9.10 in click.py
+
+3. Run CLICK using solvent accessibility and secondary structure features:
+	
+	python click.py ./data/1xxa-1tig/1xxa.pdb ./data/1xxa-1tig/1tig.pdb
+
+4. Test CLICK program:
+
+	./click ./data/1xxa-1tig/1xxa.pdb ./data/1xxa-1tig/1tig.pdb
+
+Output:
+- 1xxa-1tig.pdb.1.clique lists Structure Overlap (SO%), RMSD, and and the details of matched atom pairs for the first alignment
+- 1xxa-1tig.1.pdb and 1tig-1xxa.1.pdb are transformation PDB files of 1xxa and 1tig, respectively, for the first alignment
+
+
+OPTION
+-m  0: use SS and SA value; -m 1: otherwise (Default 0)
+-de 0: use depth value; -de 1: otherwise (Default 1)
+-a 10: run 10 flexible alignments (Default 1)
+-s  0: no save transformation files in .pdb format; -s 1: otherwise (Default 1)
+-h  0: use heuristic to maximize SO; -h 1: otherwise (Default 0)
+The other parameters such as type of representative atoms, the size of a clique, the cutoff threshold of distance, the cutoff threshold of RMSD etc, can be changed in Parameters.inp file.
+For example, if use multiple representative atoms such as CA CB C3' then typeAtom=" CA , CB , C3'" in Parameters.inp
+ 
+

@@ -79,7 +79,7 @@ def patch_scripts(scripts_dir, path_replacements):
                 content = content.replace(old, new)
             
             # Additional patches for command calls
-            content = content.replace("vina_1.2.4_linux_x86_64", "vina") 
+            content = content.replace("vina", "vina") 
             
             if content != original_content:
                 with open(full_path, 'w') as f:

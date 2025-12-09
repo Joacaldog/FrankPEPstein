@@ -11,3 +11,4 @@ utilities/*.tar.gz
 !utilities/Click.tar.gz
 DB/*.tar.gz
 DB/reduce_wwPDB_het_dict.txt.tar.gz
+DB/reduce_wwPDB_het_dict.txt

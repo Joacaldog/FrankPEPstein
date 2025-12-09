@@ -119,7 +119,7 @@ def main():
         os.makedirs("temp_folder")
 
     # reduce receptor
-    run_cmd(f"reduce -Quiet -DB /home/jgutierrez/scripts/reduce_wwPDB_het_dict.txt {receptor_file} 1> temp_folder/H_{receptor_file} 2> /dev/null")
+    run_cmd(f"reduce -Quiet -DB \"/mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/scripts/reduce_wwPDB_het_dict.txt\" {receptor_file} 1> temp_folder/H_{receptor_file} 2> /dev/null")
 
     os.chdir("temp_folder")
     run_cmd(f"sed -i '/END/d' H_{receptor_file} ; prepare_receptor -r H_{receptor_file} -o MinREC_{receptor_file}qt 1> /dev/null 2> /dev/null")
@@ -141,13 +141,13 @@ def main():
             complex_min_file = f'{complex_file}_min.pdb'
             run_cmd(
                 f'cat {complex_min_file} | grep " x " | grep -v "TER" 1> MinPEP_{min_file} 2> /dev/null ; '
-                f'reduce -Quiet -DB /home/jgutierrez/scripts/reduce_wwPDB_het_dict.txt MinPEP_{min_file} 1> H_MinPEP_{min_file} 2> /dev/null ; '
+                f'reduce -Quiet -DB /mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/scripts/reduce_wwPDB_het_dict.txt MinPEP_{min_file} 1> H_MinPEP_{min_file} 2> /dev/null ; '
                 f"sed -i '/END/d' H_MinPEP_{min_file} ; "
                 f"prepare_ligand -l H_MinPEP_{min_file} -o MinPEP_{min_file.replace('.pdb', '.pdbqt')} 1> /dev/null 2> /dev/null"
             )
             log_file = f"{min_file.replace('.pdb','')}.log"
             cmd_vina = (
-                f"/home/jgutierrez/utilities/./vina_1.2.4_linux_x86_64 --verbosity 0 --autobox --local_only "
+                f"vina --verbosity 0 --autobox --local_only "
                 f"--receptor MinREC_{receptor_file}qt --ligand MinPEP_{min_file.replace('.pdb', '.pdbqt')} > {log_file}"
             )
             run_cmd(cmd_vina)

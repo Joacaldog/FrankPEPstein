@@ -68,10 +68,16 @@ if not os.path.exists(folder_output):
 
 working_directory = os.getcwd()
 
-os.system(f'cp {fau_file} {folder_temp}')
+os.system(f'cp "{fau_file}" "{folder_temp}"')
 # os.system(f"cp /home/Click/superposer/Parameters.inp {folder_temp}")
-# os.system(f"cp ~/Tesis/pep_gen/scripts/Parameters_for_search/Parameters.inp {folder_temp}")
-os.system(f"cp ~/scripts/Parameters.inp {folder_temp}")
+# os.system(f"cp ~/scripts/Parameters.inp {folder_temp}")
+script_dir = os.path.dirname(os.path.realpath(__file__))
+# Look for Parameters.inp in ../utilities/Click/Parameters.inp relative to this script
+parameters_inp = os.path.abspath(os.path.join(script_dir, "../utilities/Click/Parameters.inp"))
+if not os.path.exists(parameters_inp):
+    print(f"Warning: Parameters.inp not found at {parameters_inp}. Trying to copy from current dir.")
+    parameters_inp = "Parameters.inp"
+os.system(f"cp '{parameters_inp}' {folder_temp}")
 
 def run_click(file):
     try:
@@ -113,7 +119,7 @@ def run_click(file):
                 out_file1 = (f"{file_noExtension}-{Faufile_noExtension}.1.pdb")
                 sup_needed1 = (f"{Faufile_noExtension}-{file_noExtension}.1.pdb")
                 # print("-------", folder, peptide_chain, patch, patch_length, "-------")
-                os.system(f"cp {folder_file} .")
+                os.system(f"cp \"{folder_file}\" .")
                 cmd = (f"click {file} {Faufile_noExtension}.pdb 1> /dev/null 2> /dev/null")
                 os.system(cmd)
                 pass_criteria = 0
@@ -270,4 +276,4 @@ os.chdir(folder_temp)
 Parallel(n_jobs=threads)(delayed(run_click)(file) for file in tqdm(os.listdir(folder_minipockets), total=len(
     os.listdir(folder_minipockets)), desc="aligning minipockets to target_pocket and defining patches"))
 os.chdir("../")
-os.system("rm -r " + folder_temp)
+os.system(f"rm -r \"{folder_temp}\"")

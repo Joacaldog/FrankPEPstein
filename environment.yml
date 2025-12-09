@@ -1,0 +1,17 @@
+name: FrankPEPstein
+channels:
+  - salilab
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - openbabel
+  - biopython
+  - fpocket
+  - joblib
+  - tqdm
+  - py3dmol
+  - modeller
+  - pip
+  - pip:
+    - gdown

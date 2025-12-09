@@ -3,7 +3,7 @@ import sys
 
 initial_path = os.getcwd()
 minipockets_folder = sys.argv[1]
-cmd1 = f'python3 ~/scripts/superposerV5.2_leave1out.py -T pocket.pdb -d /home/jgutierrez/FrankPEPstein/filtered_DB_P5-15_R30_id10 -r 0.1 -t 36 -a 3 -fm {minipockets_folder}'
+cmd1 = f'python3 ~/scripts/superposerV5.2_leave1out.py -T pocket.pdb -d /mnt/c/Users/Joacaldo/OneDrive - Universidad Católica de Chile/FrankPEPstein/DB/minipockets_surface80_winsize3_size3_curated-db -r 0.1 -t 36 -a 3 -fm {minipockets_folder}'
 
 for folder in next(os.walk('.'))[1]:
     os.chdir(initial_path)
