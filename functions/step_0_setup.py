@@ -40,11 +40,19 @@ def run_setup():
             with SuppressStdout():
                 import condacolab
                 condacolab.check()
-        except ImportError:
+        except (ImportError, AssertionError):
+            # Not installed or not ready
+            print(f"\n{'='*40}")
+            print("🔄 Installing CondaColab...")
+            print("⚠️  The Kernel will RESTART automatically.")
+            print("👉  Please RUN THIS CELL AGAIN after the restart!")
+            print(f"{'='*40}\n")
+            
             with SuppressStdout():
                 subprocess.run("pip install -q condacolab", shell=True, check=True)
                 import condacolab
                 condacolab.install()
+            return # Stop execution here as kernel dies
         pbar.update(1)
 
         # 2. Git Clone
