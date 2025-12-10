@@ -137,7 +137,7 @@ except Exception as e: print(e)
         adfr_bin = os.path.join(utilities_dir, "ADFRsuite_x86_64Linux_1.0/bin") # Common struct
         if os.path.exists(adfr_bin): env["PATH"] = f"{adfr_bin}:{env['PATH']}"
 
-        superposer_script = os.path.join(scripts_dir, "superposerV5.2_leave1out.py")
+        superposer_script = os.path.join(scripts_dir, "superposerV5.2_leave1out_cluster.py")
         
         cmd_super = [
             frank_python, superposer_script,
@@ -220,7 +220,7 @@ except Exception as e: print(e)
         # Copy receptor to output dir for Vina
         shutil.copy(os.path.join(run_dir, target_receptor), os.path.join(super_out_dir, target_receptor))
         
-        vina_script_1 = os.path.join(scripts_dir, "frankVINA_FNKPSTN.py")
+        vina_script_1 = os.path.join(scripts_dir, "frankVINA_FNKPSTN_cluster.py")
         subprocess.run([frank_python, vina_script_1, target_receptor, str(threads_slider.value)], cwd=super_out_dir, check=True, env=env)
         
         # B. Cluster
@@ -230,7 +230,7 @@ except Exception as e: print(e)
             print("No qualified patches found.")
             return
             
-        clust_script = os.path.join(scripts_dir, "patch_clustering_V8.7.py")
+        clust_script = os.path.join(scripts_dir, "patch_clustering_V8.7_cluster.py")
         subprocess.run([frank_python, clust_script, "-w", str(pep_len), "-t", str(threads_slider.value)], cwd=patches_dir, check=True, env=env)
         
         # C. Score (FrankVINA II)
@@ -241,7 +241,7 @@ except Exception as e: print(e)
              return
         
         shutil.copy(os.path.join(run_dir, target_receptor), os.path.join(final_dir, target_receptor))
-        vina_script_2 = os.path.join(scripts_dir, "frankVINA_V3.py")
+        vina_script_2 = os.path.join(scripts_dir, "frankVINA_V3_cluster.py")
         subprocess.run([frank_python, vina_script_2, target_receptor, str(threads_slider.value), str(n_peps)], cwd=final_dir, check=True, env=env)
         
         print("\nPipeline Finished!")
