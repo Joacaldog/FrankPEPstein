@@ -124,6 +124,7 @@ def setup_external_tools(drive_ids=None):
     os.makedirs(utilities_dir, exist_ok=True)
     os.makedirs(db_dir, exist_ok=True)
 
+
     # 1. Database (Parallel Download & Decompress)
     db_id = drive_ids.get("db_id")
     # Determine pigz availability
@@ -132,7 +133,7 @@ def setup_external_tools(drive_ids=None):
 
     db_tar = os.path.join(base_dir, "filtered_DB_P5-15_R30_id10_optim.tar.gz")
     
-    # Check if DB is already populated (simple check)
+    # Check if Main DB is already populated (simple check)
     if not os.path.exists(os.path.join(db_dir, "filtered_DB_P5-15_R30_id10")):
         if db_id:
              if not os.path.exists(db_tar):
@@ -145,6 +146,29 @@ def setup_external_tools(drive_ids=None):
                  subprocess.run(f"tar {extract_flag} {db_tar} -C {db_dir} > /dev/null 2>&1", shell=True, check=True)
                  # Optional: delete tar to save space?
                  # os.remove(db_tar)
+
+    # 1.5 Minipockets Database
+    mini_id = drive_ids.get("minipockets_id")
+    mini_tar = os.path.join(base_dir, "minipockets.tar.gz")
+    # We check for a known folder inside, e.g. "minipockets_surface80_winsize3_size3_curated"
+    # Or just check if the tar was extracted.
+    # User said "-fm" points to it.
+    # Let's assume the tar extracts to a folder inside DB.
+    
+    if mini_id:
+        # Check standard folder name (guess or generic)
+        # If user didn't specify name, we rely on tar content.
+        # But we need a check to avoid redownload.
+        # Let's check if 'minipockets*' exists in DB dir
+        existing_mini = glob.glob(os.path.join(db_dir, "minipockets*"))
+        if not existing_mini:
+             if not os.path.exists(mini_tar):
+                  print(f"Downloading Minipockets DB (ID: {mini_id})...")
+                  gdown.download(f'https://drive.google.com/uc?id={mini_id}', mini_tar, quiet=True)
+             
+             if os.path.exists(mini_tar):
+                  print(f"Extracting Minipockets DB...")
+                  subprocess.run(f"tar {extract_flag} {mini_tar} -C {db_dir} > /dev/null 2>&1", shell=True, check=True)
 
     # 2. Utilities (ADFR)
     # Usually passed as zip or tar
@@ -211,6 +235,7 @@ def setup_external_tools(drive_ids=None):
         # Correct Drive IDs
         drive_ids = {
             "db_id": "13a6M_UVham9SiBCE6PCQQi6CnUvGNvNO", # Provided by user
+            "minipockets_id": "1a4GoZ1ZT-DNYMyvVtKJukNdF6TAaLJU5", # New Minipockets DB
             "utilities_pkg_id": "1gmRj8mva84-JB7UXUcQfB3Ziw_nwwdox", # Kept existing
             # If explicit ADFR installer needed:
             # "adfr_installer_id": "..."

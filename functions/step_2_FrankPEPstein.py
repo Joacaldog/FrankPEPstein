@@ -129,6 +129,16 @@ except Exception as e: print(e)
         # Find paths dynamically
         utilities_dir = os.path.join(base_dir, "utilities")
         
+        # Determine Minipockets DB (starts with minipockets...)
+        db_root = os.path.dirname(db_path) # parent of filtered_DB
+        minipockets_path = db_path # Fallback
+        try:
+            candidates = [d for d in os.listdir(db_root) if d.startswith("minipockets")]
+            if candidates:
+                minipockets_path = os.path.join(db_root, candidates[0])
+        except:
+             pass
+
         # Add Click
         click_bin = os.path.join(utilities_dir, "Click/bin")
         if os.path.exists(click_bin): env["PATH"] = f"{click_bin}:{env['PATH']}"
@@ -147,7 +157,7 @@ except Exception as e: print(e)
             "-x_center", str(box_center[0]), "-y_center", str(box_center[1]), "-z_center", str(box_center[2]),
             "-x_size", str(box_size[0]), "-y_size", str(box_size[1]), "-z_size", str(box_size[2]),
             "-t", str(threads_slider.value),
-            "-fm", db_path
+            "-fm", minipockets_path
         ]
         
         # Start Visualization Thread
