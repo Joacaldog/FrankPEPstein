@@ -40,6 +40,23 @@ receptor_filename = None
 pockets_dir = "pockets_upload" # Default for manual
 final_pockets_list = []
 
+# --- Persistence Logic ---
+import json
+
+def save_pipeline_state(updates):
+    state_file = "pipeline_state.json"
+    current_state = {}
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r") as f:
+                current_state = json.load(f)
+        except:
+            pass
+    current_state.update(updates)
+    with open(state_file, "w") as f:
+        json.dump(current_state, f, indent=4)
+    print(f"State saved to {state_file}")
+
 # --- 1. Upload Receptor ---
 print(f"--- Upload Receptor PDB ({detection_mode}) ---")
 uploaded_r = files.upload()
@@ -65,6 +82,7 @@ else:
         receptor_filename = os.path.abspath(raw_filename)
         
     print(f"Receptor: {receptor_filename}")
+    save_pipeline_state({"receptor_filename": receptor_filename})
 
     # --- 2. Pocket Handling ---
     if detection_mode == "Auto Detect":
@@ -347,6 +365,12 @@ def extract_and_calculate_box(b):
                     box_center = center
                     box_size = size
                     extracted_pocket_path = os.path.abspath(pocket_path)
+                    
+                    save_pipeline_state({
+                        "box_center": box_center,
+                        "box_size": box_size,
+                        "extracted_pocket_path": extracted_pocket_path
+                    })
                     
                     print("✅ Pocket parameters ready for FrankPEPstein!")
                 else:

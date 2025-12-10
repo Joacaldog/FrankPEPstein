@@ -47,9 +47,36 @@ threads_slider = widgets.IntSlider(
 run_output = widgets.Output()
 
 # --- Execution Logic ---
+import json
+
 def run_frankpepstein_pipeline(b):
     run_output.clear_output()
     with run_output:
+        # 0. Load State (Persistence Check)
+        global box_center, box_size, extracted_pocket_path, receptor_filename
+        
+        state_file = "pipeline_state.json"
+        if os.path.exists(state_file):
+            try:
+                with open(state_file, "r") as f:
+                    state = json.load(f)
+                    
+                # Restore globals if missing
+                if 'box_center' not in globals() and 'box_center' in state:
+                    box_center = state['box_center']
+                    print("✅ Restored box_center from state file.")
+                if 'box_size' not in globals() and 'box_size' in state:
+                    box_size = state['box_size']
+                    print("✅ Restored box_size from state file.")
+                if 'extracted_pocket_path' not in globals() and 'extracted_pocket_path' in state:
+                    extracted_pocket_path = state['extracted_pocket_path']
+                    print("✅ Restored extracted_pocket_path from state file.")
+                if 'receptor_filename' not in globals() and 'receptor_filename' in state:
+                    receptor_filename = state['receptor_filename']
+                    print("✅ Restored receptor_filename from state file.")
+            except Exception as e:
+                print(f"⚠️ Warning: Could not load state file: {e}")
+
         # 1. Validate Prereqs
         if 'box_center' not in globals() or 'box_size' not in globals():
              print("❌ Error: Box parameters (center/size) not defined. Please run Step 4 first.")
@@ -107,24 +134,53 @@ def run_frankpepstein_pipeline(b):
             print("❌ Error: Pocket path not defined. Please run extraction (Step 3/4) first.")
             return
 
+        # Prepare Pocket for Superposer (Chain 'p')
+        target_pocket_file = "target_pocket.pdb"
+        if 'extracted_pocket_path' not in globals() or not extracted_pocket_path:
+            print("❌ Error: Pocket path not defined. Please run extraction (Step 3/4) first.")
+            return
+
+        print(f"Preparing pocket from: {extracted_pocket_path}")
+        
+        # Isolate BioPython usage to avoid Colab kernel issues
+        prep_script_content = f"""
+import sys
+from Bio import PDB
+import os
+
+def prepare_pocket(input_path, output_path):
+    try:
+        parser = PDB.PDBParser(QUIET=True)
+        struct = parser.get_structure("pocket", input_path)
+        
+        # Rename all chains to 'p'
+        for model in struct:
+            for chain in model:
+                chain.id = 'p'
+        
+        io = PDB.PDBIO()
+        io.set_structure(struct)
+        io.save(output_path)
+        print("SUCCESS")
+    except Exception as e:
+        print(f"ERROR: {{e}}")
+
+if __name__ == "__main__":
+    prepare_pocket('{extracted_pocket_path}', '{os.path.join(run_dir, target_pocket_file)}')
+"""
+        prep_script_path = os.path.join(run_dir, "prep_pocket.py")
+        with open(prep_script_path, "w") as f:
+            f.write(prep_script_content)
+            
         try:
-            print(f"Preparing pocket from: {extracted_pocket_path}")
-            from Bio import PDB
-            parser = PDB.PDBParser(QUIET=True)
-            struct = parser.get_structure("pocket", extracted_pocket_path)
-            
-            # Rename all chains to 'p' to satisfy Superposer requirement
-            for model in struct:
-                for chain in model:
-                    chain.id = 'p'
-            
-            io = PDB.PDBIO()
-            io.set_structure(struct)
-            io.save(os.path.join(run_dir, target_pocket_file))
-            print(f"✅ Created {target_pocket_file} with chain 'p' for Superposer.")
-            
+            res = subprocess.run([frank_python, prep_script_path], capture_output=True, text=True)
+            if "SUCCESS" in res.stdout:
+                print(f"✅ Created {target_pocket_file} with chain 'p' for Superposer.")
+            else:
+                 print(f"❌ Error preparing pocket PDB: {res.stdout} {res.stderr}")
+                 return
         except Exception as e:
-            print(f"❌ Error preparing pocket PDB: {e}")
+            print(f"❌ Error executing isolated prep script: {e}")
             return
             
 
