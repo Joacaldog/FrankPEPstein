@@ -197,18 +197,18 @@ except Exception as e: print(e)
                         
                         view = py3Dmol.view(width=800, height=600)
                         
-                        # A. Receptor (Defined, not transparent)
+                        # A. Receptor (Solid Surface, White)
                         view.addModel(open(receptor_filename, 'r').read(), "pdb")
-                        view.setStyle({'model': 0}, {'cartoon': {'color': 'white'}}) 
-                        # Optional: Add faint surface ? User asked for defined.
-                        # view.addSurface(py3Dmol.SES, {'opacity': 0.5, 'color': 'white'}, {'model': 0})
+                        view.setStyle({'model': 0}, {}) 
+                        view.addSurface(py3Dmol.SES, {'opacity': 1.0, 'color': 'white'}, {'model': 0})
                         
                         # B. Box (Red, Defined)
+                        # We simulate thickness by drawing multiple lines? No, simple box for efficiency.
                         view.addBox({
                             'center': {'x': box_center[0], 'y': box_center[1], 'z': box_center[2]},
                             'dimensions': {'w': box_size[0], 'h': box_size[1], 'd': box_size[2]},
                             'color': 'red',
-                            'opacity': 0.6,
+                            'opacity': 1.0, # Fully opaque
                             'wireframe': True
                         })
                         
@@ -238,17 +238,47 @@ except Exception as e: print(e)
             if not os.path.exists(complexes_path):
                  print(f"Warning: Complex DB not found at {complexes_path}")
             
-            # Print Command
-            print("\nRunning Superposer with command:")
-            print(" ".join(cmd_super))
-            print("-" * 20 + "\n")
+            # Print Command (Filtered)
+            # Filter out -a and -r
+            filtered_cmd = []
+            skip_next = False
+            for arg in cmd_super:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if arg in ["-a", "-r"]:
+                    skip_next = True
+                    continue
+                filtered_cmd.append(arg)
 
+            print("\nRunning Superposer with command (Internal params hidden):")
+            print(" ".join(filtered_cmd))
+            print("-" * 20 + "\n")
+            
+            # Reset Progress Bar
+            superposer_progress.value = 0
+            superposer_progress.max = 100 # Default, will update
+            
             process = subprocess.Popen(cmd_super, cwd=run_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
             
             for line in iter(process.stdout.readline, ''):
-                print(line, end='')
+                if "PROGRESS:" in line:
+                    try:
+                        # Format: PROGRESS: 100/90000
+                        parts = line.split("PROGRESS:")[1].strip().split("/")
+                        current = int(parts[0])
+                        total = int(parts[1])
+                        superposer_progress.max = total
+                        superposer_progress.value = current
+                        superposer_progress.description = f"Scanning DB: {int(current/total*100)}%"
+                    except:
+                        pass
+                else:
+                    print(line, end='')
                 
             process.wait()
+            superposer_progress.value = superposer_progress.max # Ensure full tag
+            superposer_progress.description = "Scanning DB: Done"
             
             stop_event.set()
             viz_thread.join()
@@ -316,10 +346,22 @@ run_btn.on_click(run_frankpepstein_pipeline)
 
 viz_output = widgets.Output()
 
+# Progress Bar Widget
+superposer_progress = widgets.IntProgress(
+    value=0,
+    min=0,
+    max=100,
+    description='Scanning DB:',
+    bar_style='info',
+    style={'bar_color': '#42b983'},
+    orientation='horizontal',
+    layout=widgets.Layout(width='100%')
+)
 display(widgets.VBox([
     widgets.HBox([length_slider, num_peptides_slider]),
     threads_slider,
     run_btn,
+    superposer_progress, # Display Progress Bar
     run_output,
     viz_output
 ]))

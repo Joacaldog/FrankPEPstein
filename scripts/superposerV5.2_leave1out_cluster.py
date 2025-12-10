@@ -283,9 +283,9 @@ total_files = len(os.listdir(folder_minipockets))
 
 def run_click_wrapper(args):
     file, i, total = args
-    # Print progress every 1000 files
-    if i % 1000 == 0:
-        print(f"Processed {i}/{total} pockets...", flush=True)
+    # Print progress tag for Step 2 parser
+    if i % 100 == 0:
+        print(f"PROGRESS: {i}/{total}", flush=True)
     run_click(file)
 
 os.chdir(folder_temp)
