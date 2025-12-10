@@ -178,6 +178,7 @@ except Exception as e: print(e)
             time.sleep(2)
             
             seen_fragments = 0
+            first_run = True
             
             while not stop_event.is_set():
                 # 1. Check for fragments
@@ -188,8 +189,9 @@ except Exception as e: print(e)
                 n_frags = len(fragments)
                 
                 # Update only if new fragments found or first run
-                if n_frags > seen_fragments or seen_fragments == 0:
+                if n_frags > seen_fragments or first_run:
                      seen_fragments = n_frags
+                     first_run = False
                      
                      with viz_output:
                         clear_output(wait=True)
@@ -201,6 +203,13 @@ except Exception as e: print(e)
                         view.addModel(open(receptor_filename, 'r').read(), "pdb")
                         view.setStyle({'model': 0}, {}) 
                         view.addSurface(py3Dmol.SES, {'opacity': 1.0, 'color': 'white'}, {'model': 0})
+                        
+                        # A.2 Pocket (Solid Surface, Orange)
+                        pocket_full_path = os.path.join(run_dir, target_pocket)
+                        if os.path.exists(pocket_full_path):
+                            view.addModel(open(pocket_full_path, 'r').read(), "pdb")
+                            view.setStyle({'model': -1}, {})
+                            view.addSurface(py3Dmol.SES, {'opacity': 1.0, 'color': 'orange'}, {'model': -1})
                         
                         # B. Box (Red, Defined)
                         # We simulate thickness by drawing multiple lines? No, simple box for efficiency.
@@ -355,7 +364,7 @@ superposer_progress = widgets.IntProgress(
     bar_style='info',
     style={'bar_color': '#42b983'},
     orientation='horizontal',
-    layout=widgets.Layout(width='100%')
+    layout=widgets.Layout(width='50%')
 )
 display(widgets.VBox([
     widgets.HBox([length_slider, num_peptides_slider]),

@@ -275,22 +275,18 @@ def run_click(file):
     except:
         pass
 
-# Count total files
-total_files = len(os.listdir(folder_minipockets))
-
-# Update run_click signature to accept tuple or handle unpacked
-# We need to change delayed(run_click)(file) to delayed(run_click)(file, i, total_files)
-
-def run_click_wrapper(args):
-    file, i, total = args
-    # Print progress tag for Step 2 parser
-    if i % 100 == 0:
-        print(f"PROGRESS: {i}/{total}", flush=True)
-    run_click(file)
 
 os.chdir(folder_temp)
 files_list = os.listdir(folder_minipockets)
-# Use wrapper
-Parallel(n_jobs=threads)(delayed(run_click_wrapper)((file, i, total_files)) for i, file in enumerate(files_list))
+total_files = len(files_list)
+
+# Use return_as="generator" to iterate in main process
+# This ensures print statements are flushed correctly to stdout
+results = Parallel(n_jobs=threads, return_as="generator")(delayed(run_click)(file) for file in files_list)
+
+for i, _ in enumerate(results):
+    if i % 500 == 0: # Print every 500
+        print(f"PROGRESS: {i}/{total_files}", flush=True)
+
 os.chdir("../")
 os.system("rm -r " + folder_temp)
