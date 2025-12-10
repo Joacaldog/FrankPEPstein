@@ -1,5 +1,5 @@
 
-#@title 0. Install CondaColab & Setup Tools
+#@title 0. Install CondaColab & Setup Tools (~2 min)
 import sys
 import os
 import subprocess

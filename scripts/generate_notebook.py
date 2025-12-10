@@ -25,15 +25,15 @@ nb.cells.append(new_markdown_cell("""
 
 # --- Step 0: Setup ---
 content_0 = read_file_content("functions/step_0_setup.py")
-nb.cells.append(new_code_cell(content_0))
+nb.cells.append(new_code_cell(content_0, metadata={"cellView": "form"}))
 
 # --- Step 1: Input & Pocket ---
 content_1 = read_file_content("functions/step_1_pocket_processing.py")
-nb.cells.append(new_code_cell(content_1))
+nb.cells.append(new_code_cell(content_1, metadata={"cellView": "form"}))
 
 # --- Step 2: Pipeline Execution ---
 content_2 = read_file_content("functions/step_2_FrankPEPstein.py")
-nb.cells.append(new_code_cell(content_2))
+nb.cells.append(new_code_cell(content_2, metadata={"cellView": "form"}))
 
 # --- Save ---
 output_filename = 'FrankPEPstein.ipynb'
