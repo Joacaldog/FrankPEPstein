@@ -202,6 +202,10 @@ def setup_external_tools(drive_ids=None):
          if not os.path.exists(util_tar):
               gdown.download(f'https://drive.google.com/uc?id={util_id}', util_tar, quiet=True)
          subprocess.run(f"tar {extract_flag} {util_tar} -C {utilities_dir} > /dev/null 2>&1", shell=True, check=True)
+    
+    # Ensure executables have permission (Fix for "Permission denied")
+    print("Fixing database permissions...")
+    subprocess.run(f"chmod -R +x {utilities_dir}", shell=True)
 
     # ADFR Installation / License Check
     # Look for install script
