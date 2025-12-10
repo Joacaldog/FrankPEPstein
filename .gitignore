@@ -10,6 +10,7 @@ run_frankpepstein/
 utilities/*.tar.gz
 !utilities/Click.tar.gz
 DB/*.tar.gz
-DB/reduce_wwPDB_het_dict.txt.tar.gz
 DB/reduce_wwPDB_het_dict.txt
 utilities/ADFRsuite_x86_64Linux_1.0
+DB/reduce_wwPDB_het_dict.txt.tar.gz
+DB/reduce_wwPDB_het_dict.tar.gz

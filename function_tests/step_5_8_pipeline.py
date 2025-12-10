@@ -1,4 +1,4 @@
-#@title 3. FrankPEPstein Pipeline
+#@title 2. FrankPEPstein Pipeline
 #@markdown **Instructions:**
 #@markdown 1. Configure the pipeline parameters (Length, Number of Peptides).
 #@markdown 2. Click **Run Pipeline** to start the search and generation process.
@@ -211,11 +211,26 @@ if __name__ == "__main__":
         
         superposer_script = os.path.join(scripts_dir, "superposerV5.2_leave1out.py")
         
+        # CORRECT DB PATH for Complexes (pepbdb_path)
+        # User defined structure implies a specific folder for complexes
+        db_dir_base = os.path.join(base_dir, "DB")
+        pepbdb_path = os.path.join(db_dir_base, "peptide_complexes")
+        if not os.path.exists(pepbdb_path):
+             print(f"⚠️ Warning: Complexes DB not found at {pepbdb_path}. Superposer might fail silently (0 matches).")
+
+        # Lazy Source Configuration (User Input)
+        # In notebook, this would be mapped to a drive path
+        lazy_source_path = "/content/drive/MyDrive/PepBDB_Complexes_Full" 
+        if 'complexes_drive_path' in globals() and complexes_drive_path:
+            lazy_source_path = complexes_drive_path
+        
+        print(f"Lazy Source for Complexes: {lazy_source_path}")
+
         # Uses target_pocket_file (chain p) as -T
         cmd_superposer = [
             frank_python, superposer_script,
             "-T", target_pocket_file, 
-            "-d", db_path,
+            "-d", pepbdb_path,
             "-a", "3", 
             "-r", "0.1",
             "-x_center", str(box_center[0]),
@@ -225,31 +240,55 @@ if __name__ == "__main__":
             "-y_size", str(box_size[1]),
             "-z_size", str(box_size[2]),
             "-t", str(n_threads),
-            "-fm", db_path
+            "-fm", db_path,
+            "--lazy_source", lazy_source_path
         ]
         
+        cmd_string = " ".join(cmd_superposer)
+        
         try:
-            print(f"Running command: {' '.join(cmd_superposer)}")
-            # Capture output to see what's happening
-            process = subprocess.run(
-                cmd_superposer, 
-                cwd=run_dir, 
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+            print(f"Running command: {cmd_string}")
+            
+            # Prepare environment with 'click' in PATH
+            # click is at base_dir/utilities/Click/click
+            click_dir = os.path.join(base_dir, "utilities", "Click")
+            conda_bin = "/usr/local/envs/FrankPEPstein/bin"
+            
+            env = os.environ.copy()
+            # Prepend to PATH
+            env["PATH"] = f"{click_dir}:{conda_bin}:{env.get('PATH', '')}"
+            
+            print(f"Added to PATH: {click_dir}")
+            sys.stdout.flush()
+
+            # --- DIAGNOSTIC PROBE ---
+            print("🔬 Probe: Testing execution environment...")
+            try:
+                probe = subprocess.run([frank_python, "--version"], capture_output=True, text=True)
+                print(f"   Python Version Probe: {probe.stdout.strip()}")
+            except Exception as e:
+                print(f"   ❌ Probe failed: {e}")
+            sys.stdout.flush()
+            # ------------------------
+
+            # Use Real-time Viz Wrapper
+            print("🚀 Launching Superposer with Real-time Visualization...")
+            sys.stdout.flush()
+            
+            from scripts import realtime_viz
+            
+            # Note: realtime_viz handles the subprocess and view
+            # We pass the full receptor path for context
+            realtime_viz.run_superposer_with_viz(
+                cmd_string,
+                run_dir=run_dir,
+                receptor_path=os.path.abspath(os.path.join(run_dir, target_receptor_full)),
+                box_center=box_center,
+                box_size=box_size,
+                output_dir_name="superpockets_residuesAligned3_RMSD0.1"
             )
             
-            print("--- Superposer STDOUT ---")
-            print(process.stdout)
-            print("--- Superposer STDERR ---")
-            print(process.stderr)
-            
-            if process.returncode != 0:
-                print(f"❌ Superposer failed with exit code {process.returncode}")
-                return
-            else:
-                print("✅ Superposer finished successfully.")
+            print("\n✅ Superposer wrapper finished.")
                 
         except Exception as e:
             print(f"❌ Error running Superposer: {e}")
