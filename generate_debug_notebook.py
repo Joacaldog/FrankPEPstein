@@ -69,14 +69,23 @@ if not os.path.exists("FrankPEPstein"):
 else:
     print("Repository already exists.")
 
-# --- 2. Install Dependencies (Base Environment) ---
-print("Installing dependencies in base environment (matches Colab kernel)...")
-# Using 'mamba install' installs into the active environment (base)
-!mamba install -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller
+# --- 2. Create Conda Environment 'FrankPEPstein' ---
+print("Creating 'FrankPEPstein' environment with Python 3.10...")
+# Create environment with all dependencies including Modeller
+!mamba create -n FrankPEPstein -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller
 
-# --- 3. Configure Path ---
-# No need to append site-packages or bin path as we are in the active env
-print(f"Dependencies installed in base environment.")
+# --- 3. Configure Path for Colab Usage ---
+# Since Colab runs on the 'base' kernel, we need to manually add the new env to paths
+env_path = "/usr/local/envs/FrankPEPstein"
+site_packages = f"{env_path}/lib/python3.10/site-packages"
+
+if site_packages not in sys.path:
+    sys.path.append(site_packages)
+
+# Add binary path for tools like fpocket, obabel, etc.
+os.environ['PATH'] = f"{env_path}/bin:" + os.environ['PATH']
+
+print(f"Environment 'FrankPEPstein' created and configured.")
 
 # --- PATCH: Update notebook_utils.py with local changes ---
 # This ensures we use the latest path logic without needing a git push

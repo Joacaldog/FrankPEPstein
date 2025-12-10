@@ -1,5 +1,5 @@
 #@title 0.2 Install Dependencies & Setup Tools
-#@markdown This cell clones the repository and installs dependencies in the base environment.
+#@markdown This cell clones the repository and installs dependencies in a dedicated environment.
 
 import os
 import sys
@@ -12,13 +12,39 @@ if not os.path.exists("FrankPEPstein"):
 else:
     print("Repository already exists.")
 
-# --- 2. Install Dependencies (Base Environment) ---
-print("Installing dependencies in base environment (matches Colab kernel)...")
-# Using 'mamba install' installs into the active environment (base)
-# This prevents Bio.PDB.ccealign errors due to binary incompatibility between envs
-subprocess.run("mamba install -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller", shell=True, check=True)
+# --- 1.5 Install CondaColab ---
+try:
+    import condacolab
+    print("condacolab already installed.")
+except ImportError:
+    print("Installing CondaColab...")
+    subprocess.run("pip install -q condacolab", shell=True, check=True)
+    import condacolab
+    condacolab.install()
+    print("Please restart the runtime if asked, then run this cell again.")
 
-# --- 3. Run Notebook Setup Utils ---
+# --- 2. Create Conda Environment 'FrankPEPstein' ---
+env_path = "/usr/local/envs/FrankPEPstein"
+if os.path.exists(env_path):
+    print(f"Environment 'FrankPEPstein' already exists at {env_path}. Skipping creation.")
+else:
+    print("Creating 'FrankPEPstein' environment with Python 3.10 (this may take a few minutes)...")
+    # Create environment with all dependencies including Modeller
+    subprocess.run("mamba create -n FrankPEPstein -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina python=3.10 salilab::modeller", shell=True, check=True)
+
+# --- 3. Configure Path for Colab Usage ---
+# Since Colab runs on the 'base' kernel, we need to manually add the new env to paths
+site_packages = f"{env_path}/lib/python3.10/site-packages"
+
+if site_packages not in sys.path:
+    sys.path.append(site_packages)
+
+# Add binary path for tools like fpocket, obabel, etc.
+os.environ['PATH'] = f"{env_path}/bin:" + os.environ['PATH']
+
+print(f"Environment 'FrankPEPstein' created and configured.")
+
+# --- 4. Run Notebook Setup Utils ---
 print(f"Dependencies installed.")
 
 repo_path = os.path.abspath("FrankPEPstein")

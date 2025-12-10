@@ -157,10 +157,52 @@ def setup_external_tools(drive_ids=None):
     os.makedirs(db_dir, exist_ok=True)
 
     # File definitions
+    # --- Bundle Download Logic ---
+    # Downloads everything in two main packages if IDs are provided
+    bundles = {
+        "utilities_pkg": {
+            "path": os.path.join(base_dir, "utilities.tar.gz"),
+            "id_key": "utilities_pkg_id",
+            "extract_to": os.path.join(base_dir, "utilities"),
+            "desc": "Utilities Bundle"
+        },
+        "db_pkg": {
+            "path": os.path.join(base_dir, "DB.tar.gz"),
+            "id_key": "db_pkg_id",
+            "extract_to": os.path.join(base_dir, "DB"),
+            "desc": "Database Bundle"
+        }
+    }
+
+    if drive_ids is None:
+        drive_ids = {}
+
+    # Download and extract bundles first
+    for name, info in bundles.items():
+        bundle_id = drive_ids.get(info["id_key"])
+        if bundle_id and not os.path.exists(info["extract_to"]): # Only if dir doesn't exist? Or check manifest?
+             # Actually, we should check if the CONTENT exists, but downloading bundle is safer if unsure.
+             # Simple check: if tarball doesn't exist, download.
+             if not os.path.exists(info["path"]):
+                 print(f"Downloading {info['desc']}...")
+                 url = f'https://drive.google.com/uc?id={bundle_id}'
+                 gdown.download(url, info["path"], quiet=False)
+             
+             # Extract
+             if os.path.exists(info["path"]):
+                 print(f"Extracting {info['desc']}...")
+                 os.makedirs(info["extract_to"], exist_ok=True)
+                 # strip-components=0 because we tarred content of utilies into utilities.tar.gz?
+                 # I tarred with -C utilities, so it contains "ADFR..." at root.
+                 subprocess.run(f"tar -xzf {info['path']} -C {info['extract_to']}", shell=True, check=True)
+
+    # --- Individual Tool Verification ---
+    # Even after bundle extraction, we run this to ensure paths are set and bins are executable.
+    # It also handles legacy cases (individual IDs provided).
     files = {
         "adfr": {
             "path": os.path.join(utilities_dir, "ADFRsuite_x86_64Linux_1.0.tar.gz"),
-            "id_key": "adfr_id",
+            "id_key": "adfr_id", # Fallback key
             "extract_cmd": f"tar -xzf {{}} -C {utilities_dir}",
             "bin_path": os.path.join(os.path.abspath(utilities_dir), "ADFRsuite_x86_64Linux_1.0/bin") 
         },
@@ -182,36 +224,26 @@ def setup_external_tools(drive_ids=None):
         }
     }
 
-    if drive_ids is None:
-        drive_ids = {}
-
     for name, info in files.items():
         if not os.path.exists(info["path"]):
-            # Check if we have an ID to download
+            # Check if we have an ID to download (fallback)
             file_id = drive_ids.get(info["id_key"])
             if file_id:
-                print(f"Downloading {name}...")
+                print(f"Downloading {name} (Fallback)...")
                 url = f'https://drive.google.com/uc?id={file_id}'
                 gdown.download(url, info["path"], quiet=False)
-            else:
-                pass
-                # print(f"WARNING: {name} file not found and no ID provided for download.")
         
         # Extract if exists
-        # Check extraction marker? Or just checking if extracted dir exists?
-        # For tarballs, usually they extract a folder.
-        # ADFR -> ADFRsuite_x86_64Linux_1.0
-        # Click -> Click
-        # DB -> minipockets (maybe?)
-        
-        # Simple heuristic: If tarball exists, run extract.
-        # Ideally check if destination exists.
-        
         should_extract = False
         if os.path.exists(info["path"]):
              should_extract = True
-             # Optimization: Check if bin_path exists?
              if "bin_path" in info and os.path.exists(info["bin_path"]):
+                 should_extract = False
+             # For DB files that don't have bin_path, we might re-extract unnecessarily?
+             # Check if destination exists
+             if name == "db" and os.path.exists(os.path.join(db_dir, "minipockets_surface80_winsize3_size3_curated-db")):
+                 should_extract = False
+             if name == "dict" and os.path.exists(os.path.join(db_dir, "reduce_wwPDB_het_dict.txt")):
                  should_extract = False
         
         if should_extract:
@@ -220,10 +252,11 @@ def setup_external_tools(drive_ids=None):
             
         # Add to PATH if needed
         if "bin_path" in info and os.path.exists(info["bin_path"]):
-            os.environ['PATH'] += f":{info['bin_path']}"
+            if info['bin_path'] not in os.environ['PATH']:
+                os.environ['PATH'] += f":{info['bin_path']}"
+                print(f"Added {name} to PATH: {info['bin_path']}")
             if name == "click":
                     subprocess.run(f"chmod +x {info['bin_path']}/click", shell=True)
-            print(f"Added {name} to PATH: {info['bin_path']}")
     
     # Handle dictionary txt
     dict_txt = os.path.join(db_dir, "reduce_wwPDB_het_dict.txt")
