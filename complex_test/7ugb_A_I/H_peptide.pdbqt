@@ -1,0 +1,97 @@
+REMARK WARNING: 32 MAX_TORS EXCEEDED!!!
+REMARK  52 active torsions:
+REMARK  status: ('A' for Active; 'I' for Inactive)
+REMARK       I    between atoms: C_1  and  N_4 
+REMARK    1  A    between atoms: N_4  and  CA_5 
+REMARK    2  A    between atoms: CA_5  and  CB_6 
+REMARK    3  A    between atoms: CB_6  and  CG1_7 
+REMARK    4  A    between atoms: CA_11  and  C_12 
+REMARK    5  A    between atoms: CA_11  and  CB_14 
+REMARK       I    between atoms: C_12  and  N_26 
+REMARK    6  A    between atoms: CB_14  and  CG_15 
+REMARK    7  A    between atoms: CG_15  and  CD_16 
+REMARK    8  A    between atoms: CD_16  and  NE_17 
+REMARK       I    between atoms: NE_17  and  CZ_18 
+REMARK       I    between atoms: CZ_18  and  NH2_20 
+REMARK       I    between atoms: CZ_18  and  NH1_19 
+REMARK    9  A    between atoms: N_26  and  CA_27 
+REMARK   10  A    between atoms: CA_27  and  C_28 
+REMARK       I    between atoms: C_28  and  N_32 
+REMARK   11  A    between atoms: N_32  and  CA_33 
+REMARK   12  A    between atoms: CA_33  and  C_34 
+REMARK   13  A    between atoms: CA_33  and  CB_36 
+REMARK       I    between atoms: C_34  and  N_49 
+REMARK   14  A    between atoms: CB_36  and  CG_37 
+REMARK   15  A    between atoms: CG_37  and  CD_38 
+REMARK   16  A    between atoms: CD_38  and  NE_39 
+REMARK       I    between atoms: NE_39  and  CZ_40 
+REMARK       I    between atoms: CZ_40  and  NH2_42 
+REMARK       I    between atoms: CZ_40  and  NH1_41 
+REMARK   17  A    between atoms: N_49  and  CA_50 
+REMARK   18  A    between atoms: CA_50  and  C_51 
+REMARK   19  A    between atoms: CA_50  and  CB_53 
+REMARK       I    between atoms: C_51  and  N_66 
+REMARK   20  A    between atoms: CB_53  and  CG_54 
+REMARK   21  A    between atoms: CG_54  and  CD_55 
+REMARK   22  A    between atoms: CD_55  and  NE_56 
+REMARK       I    between atoms: NE_56  and  CZ_57 
+REMARK       I    between atoms: CZ_57  and  NH2_59 
+REMARK       I    between atoms: CZ_57  and  NH1_58 
+REMARK   23  A    between atoms: N_66  and  CA_67 
+REMARK   24  A    between atoms: CA_67  and  C_68 
+REMARK       I    between atoms: C_68  and  N_71 
+REMARK   25  A    between atoms: N_71  and  CA_72 
+REMARK   26  A    between atoms: CA_72  and  C_73 
+REMARK   27  A    between atoms: CA_72  and  CB_75 
+REMARK       I    between atoms: C_73  and  N_80 
+REMARK   28  A    between atoms: CB_75  and  CG_76 
+REMARK   29  A    between atoms: CA_81  and  C_82 
+REMARK       I    between atoms: C_82  and  N_87 
+REMARK   30  A    between atoms: N_87  and  CA_88 
+REMARK   31  A    between atoms: CA_88  and  CB_91 
+REMARK   32  A    between atoms: CA_88  and  C_89 
+REMARK       I    between atoms: C_89  and  N_104 
+REMARK   33  A    between atoms: CB_91  and  CG_92 
+REMARK   34  A    between atoms: CG_92  and  CD_93 
+REMARK   35  A    between atoms: CD_93  and  NE_94 
+REMARK       I    between atoms: NE_94  and  CZ_95 
+REMARK       I    between atoms: CZ_95  and  NH1_96 
+REMARK   36  A    between atoms: N_104  and  CA_105 
+REMARK   37  A    between atoms: CA_105  and  C_106 
+REMARK   38  A    between atoms: CA_105  and  CB_108 
+REMARK       I    between atoms: C_106  and  N_113 
+REMARK   39  A    between atoms: CB_108  and  CG_109 
+REMARK   40  A    between atoms: N_113  and  CA_114 
+REMARK   41  A    between atoms: CA_114  and  C_115 
+REMARK       I    between atoms: C_115  and  N_119 
+REMARK   42  A    between atoms: N_119  and  CA_120 
+REMARK   43  A    between atoms: CA_120  and  C_121 
+REMARK   44  A    between atoms: CA_120  and  CB_123 
+REMARK       I    between atoms: C_121  and  N_127 
+REMARK   45  A    between atoms: N_127  and  CA_128 
+REMARK   46  A    between atoms: CA_128  and  CB_131 
+REMARK   47  A    between atoms: CA_128  and  C_129 
+REMARK       I    between atoms: C_129  and  N_135 
+REMARK   48  A    between atoms: CB_131  and  OG_132 
+REMARK   49  A    between atoms: N_135  and  CA_136 
+REMARK   50  A    between atoms: CA_136  and  CB_139 
+REMARK   51  A    between atoms: CA_136  and  C_137 
+REMARK   52  A    between atoms: CB_139  and  CG_140 
+ROOT
+ATOM      1  CA  ILE I 168     -21.236 -28.351  16.854  1.00 47.95     0.097 C 
+ENDROOT
+BRANCH   1   2
+ATOM      2  CB  ILE I 168     -20.128 -28.154  17.888  1.00 40.98     0.022 C 
+ATOM      3  CG2 ILE I 168     -19.863 -29.451  18.665  1.00 42.88     0.015 C 
+BRANCH   2   4
+ATOM      4  CG1 ILE I 168     -18.875 -27.623  17.200  1.00 43.94     0.005 C 
+ATOM      5  CD1 ILE I 168     -18.076 -26.660  18.071  1.00 37.73     0.006 C 
+ENDBRANCH   2   4
+ENDBRANCH   1   2
+BRANCH   1   6
+ATOM      6  N   ILE I 168     -21.720 -27.062  16.380  1.00 47.76    -0.230 NA
+ATOM      7  C   ILE I 168     -22.640 -26.906  15.434  1.00 51.82     0.255 C 
+ATOM      8  O   ILE I 168     -23.165 -27.820  14.877  1.00 53.35    -0.270 OA
+ATOM      9  CH3 ILE I 168     -22.995 -25.470  15.092  1.00 50.96     0.100 C 
+ENDBRANCH   1   6
+TORSDOF 52
