@@ -18,6 +18,9 @@ setup_content = read_file_content('function_tests/step_0_setup.py')
 # Cell 2: Combined Workflow (Input -> Selection -> Extraction)
 combined_workflow_content = read_file_content('function_tests/step_1_4_workflow.py')
 
+# Cell 3: FrankPEPstein Pipeline
+pipeline_content = read_file_content('function_tests/step_5_8_pipeline.py')
+
 # --- Build Notebook ---
 
 # Title
@@ -33,10 +36,16 @@ This notebook tests the pipeline using a consolidated workflow:
 nb.cells.append(new_code_cell(setup_content))
 
 # Cell 2: Combined Workflow
-nb.cells.append(new_code_cell(combined_workflow_content, metadata={"cellView": "form"}))
+nb['cells'].append(nbf.v4.new_code_cell(combined_workflow_content))
+    
+# Cell 3: FrankPEPstein Pipeline
+if pipeline_content:
+    nb['cells'].append(nbf.v4.new_code_cell(pipeline_content))
+else:
+    print("Warning: Pipeline content empty or file not found")
 
-# --- Save ---
-with open('FrankPEPstein_DEBUG.ipynb', 'w') as f:
+output_filename = 'FrankPEPstein_DEBUG.ipynb' # Define output_filename
+with open(output_filename, 'w') as f:
     nbf.write(nb, f)
 
-print("Notebook generated: FrankPEPstein_DEBUG.ipynb")
+print(f"Notebook generated: {output_filename}")
