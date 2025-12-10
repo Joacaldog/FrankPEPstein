@@ -1,4 +1,4 @@
-#@title 5. FrankPEPstein Pipeline
+#@title 3. FrankPEPstein Pipeline
 #@markdown **Instructions:**
 #@markdown 1. Configure the pipeline parameters (Length, Number of Peptides).
 #@markdown 2. Click **Run Pipeline** to start the search and generation process.

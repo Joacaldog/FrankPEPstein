@@ -343,9 +343,10 @@ def extract_and_calculate_box(b):
                     print("-" * 30)
                     
                     # Store these in global namespace so other cells can access them if needed
-                    global box_center, box_size
+                    global box_center, box_size, extracted_pocket_path
                     box_center = center
                     box_size = size
+                    extracted_pocket_path = os.path.abspath(pocket_path)
                     
                     print("✅ Pocket parameters ready for FrankPEPstein!")
                 else:
