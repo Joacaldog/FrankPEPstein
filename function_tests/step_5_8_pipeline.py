@@ -192,6 +192,14 @@ if __name__ == "__main__":
         if not os.path.exists(db_path):
              print(f"❌ Error: Database not found at {db_path}")
              return
+             
+        # Debug: Check DB content
+        try:
+            db_files = os.listdir(db_path)
+            print(f"Database loaded: {len(db_files)} minipockets found in {db_path}")
+        except Exception as e:
+            print(f"❌ Error validating database structure: {e}")
+            return
 
         print("\n--- Pipeline Configuration ---")
         print(f"Target Length: {pep_length}")
@@ -221,10 +229,29 @@ if __name__ == "__main__":
         ]
         
         try:
-            # We run this INSIDE the run_dir to keep outputs contained
-            subprocess.run(cmd_superposer, cwd=run_dir, check=True)
-            print("✅ Superposer finished.")
-        except subprocess.CalledProcessError as e:
+            print(f"Running command: {' '.join(cmd_superposer)}")
+            # Capture output to see what's happening
+            process = subprocess.run(
+                cmd_superposer, 
+                cwd=run_dir, 
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            print("--- Superposer STDOUT ---")
+            print(process.stdout)
+            print("--- Superposer STDERR ---")
+            print(process.stderr)
+            
+            if process.returncode != 0:
+                print(f"❌ Superposer failed with exit code {process.returncode}")
+                return
+            else:
+                print("✅ Superposer finished successfully.")
+                
+        except Exception as e:
             print(f"❌ Error running Superposer: {e}")
             return
 
