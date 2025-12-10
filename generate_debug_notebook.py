@@ -53,9 +53,9 @@ except ImportError:
 print("CondaColab installed.")
 """))
 
-# 0.2 Main Setup
+# Main Setup
 setup_code_src = """
-#@title 0.2 Install Dependencies & Setup Tools
+#@title Install Dependencies & Setup Tools
 #@markdown This cell clones the repository and creates the 'FrankPEPstein' environment with Python 3.10.
 
 import os
