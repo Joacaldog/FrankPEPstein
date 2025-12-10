@@ -122,8 +122,8 @@ def run_click(file):
                     os.environ["PATH"] += os.pathsep + config.CLICK_DIR + os.pathsep + os.path.join(config.CLICK_DIR, "bin")
 
                 os.system(f'cp "{folder_file}" .')
-                # Using 'click' assuming it's in PATH now
-                cmd = (f'click "{file}" "{Faufile_noExtension}.pdb" 1> /dev/null 2> /dev/null')
+                # Using 'click' assuming it's in PATH now - removed silence for debugging
+                cmd = (f'click "{file}" "{Faufile_noExtension}.pdb"')
                 os.system(cmd)
                 pass_criteria = 0
                 if os.path.exists(log_file1):
@@ -161,7 +161,7 @@ def run_click(file):
                     name_outfile1_supneeded1 = f'merge_{sup_needed1.replace(".1.pdb", "")}'
                     os.system(f"sed -i '/END/d' {out_file1}")
                     os.system(f'cat {out_file1} {sup_needed1} > {name_outfile1_supneeded1}.pdb')
-                    cmd = (f"click {name_outfile1_supneeded1}.pdb {file} 1> /dev/null 2> /dev/null")
+                    cmd = (f"click {name_outfile1_supneeded1}.pdb {file}")
                     os.system(cmd)
                     log_file_tmp = (f"{name_outfile1_supneeded1}-{file_noExtension}.pdb.1.clique")
                     out_file1_tmp = (f"{file_noExtension}-{name_outfile1_supneeded1}.1.pdb")
@@ -204,7 +204,7 @@ def run_click(file):
                         super_file = (f"super_{minipocket_file_noExtension}.pdb")
                         cmd_merge_peptide_pocket = f"cat {sup_needed1} {patch_file} >> {super_file}"
                         os.system(cmd_merge_peptide_pocket)
-                        cmd_super = (f'click {super_file} {Faufile_noExtension}.pdb 1> /dev/null')
+                        cmd_super = (f'click {super_file} {Faufile_noExtension}.pdb')
                         os.system(cmd_super)
                         out_file2 = (f'{Faufile_noExtension}-{super_file.replace(".pdb", "")}.1.pdb')
                         sup_needed2 = (f'{super_file.replace(".pdb", "")}-{Faufile_noExtension}.1.pdb')
