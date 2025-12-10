@@ -163,14 +163,34 @@ def setup_external_tools(drive_ids=None):
         # But we need a check to avoid redownload.
         # Let's check if 'minipockets*' exists in DB dir
         existing_mini = glob.glob(os.path.join(db_dir, "minipockets*"))
-        if not existing_mini:
+        
+        # Verify if existing folder is actually populated
+        valid_install = False
+        if existing_mini:
+             target_folder = existing_mini[0]
+             if len(os.listdir(target_folder)) > 10: # Arbitrary threshold to ensure not empty
+                 print(f"Minipockets DB found: {os.path.basename(target_folder)} ({len(os.listdir(target_folder))} files)")
+                 valid_install = True
+             else:
+                 print(f"Found empty/corrupt minipockets folder. Re-installing...")
+                 shutil.rmtree(target_folder)
+        
+        if not valid_install:
              if not os.path.exists(mini_tar):
                   print(f"Downloading Minipockets DB (ID: {mini_id})...")
                   gdown.download(f'https://drive.google.com/uc?id={mini_id}', mini_tar, quiet=True)
              
              if os.path.exists(mini_tar):
-                  print(f"Extracting Minipockets DB...")
-                  subprocess.run(f"tar {extract_flag} {mini_tar} -C {db_dir} > /dev/null 2>&1", shell=True, check=True)
+                  print(f"Extracting Minipockets DB (This may take a moment)...")
+                  # Remove silence to debug errors
+                  subprocess.run(f"tar {extract_flag} {mini_tar} -C {db_dir}", shell=True, check=True)
+                  
+                  # Validate again
+                  new_mini = glob.glob(os.path.join(db_dir, "minipockets*"))
+                  if new_mini:
+                       print(f"✅ Extracted {len(os.listdir(new_mini[0]))} minipockets.")
+                  else:
+                       print("❌ Extraction warning: 'minipockets' glob failed. Check DB folder structure.")
 
     # 2. Utilities (ADFR)
     # Usually passed as zip or tar
