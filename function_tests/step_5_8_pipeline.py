@@ -60,34 +60,78 @@ def run_frankpepstein_pipeline(b):
              
         # Check environment
         frank_python = "/usr/local/envs/FrankPEPstein/bin/python"
-        if not os.path.exists(frank_python):
-             print("❌ Error: FrankPEPstein environment not found.")
-             return
+        # Paths to scripts (Assuming repo structure)
+        # Force absolute base path
+        if os.path.exists("/content/FrankPEPstein"):
+            base_dir = "/content/FrankPEPstein"
+        else:
+            base_dir = os.path.abspath(os.getcwd())
+            
+        print(f"Base Directory: {base_dir}")
 
-        # 2. Setup Run Directory
-        run_dir = "FrankPEPstein_Run"
+        scripts_dir = os.path.join(base_dir, "scripts")
+        db_path = os.path.join(base_dir, "DB", "minipockets_surface80_winsize3_size3_curated-db")
+        
+        # 2. Setup Run Directory (Absolute Path)
+        run_dir = os.path.join(base_dir, "FrankPEPstein_Run")
+        
         if os.path.exists(run_dir):
             shutil.rmtree(run_dir) # Clean start
         os.makedirs(run_dir)
         
-        # Copy Receptor
-        target_receptor = "receptor.pdb"
+        # Copy Receptor (Full)
+        target_receptor_full = "receptor.pdb"
         try:
-            shutil.copy(receptor_filename, os.path.join(run_dir, target_receptor))
-            print(f"✅ Setup run directory: {run_dir}")
+            # Source file check
+            if os.path.isabs(receptor_filename) and os.path.exists(receptor_filename):
+                src_receptor = receptor_filename
+            elif os.path.exists(os.path.join(base_dir, receptor_filename)):
+                src_receptor = os.path.join(base_dir, receptor_filename)
+            elif os.path.exists(os.path.join("/content", receptor_filename)):
+                src_receptor = os.path.join("/content", receptor_filename)
+            else:
+                src_receptor = os.path.abspath(receptor_filename)
+
+            if not os.path.exists(src_receptor):
+                 print(f"❌ Error: Could not find receptor file '{receptor_filename}'.")
+                 return
+                 
+            shutil.copy(src_receptor, os.path.join(run_dir, target_receptor_full))
         except FileNotFoundError:
-             print(f"❌ Error: Could not find receptor file '{receptor_filename}'")
+             print(f"❌ Error copying receptor.")
              return
+
+        # Prepare Pocket for Superposer (Chain 'p')
+        target_pocket_file = "target_pocket.pdb"
+        if 'extracted_pocket_path' not in globals() or not extracted_pocket_path:
+            print("❌ Error: Pocket path not defined. Please run extraction (Step 3/4) first.")
+            return
+
+        try:
+            print(f"Preparing pocket from: {extracted_pocket_path}")
+            from Bio import PDB
+            parser = PDB.PDBParser(QUIET=True)
+            struct = parser.get_structure("pocket", extracted_pocket_path)
+            
+            # Rename all chains to 'p' to satisfy Superposer requirement
+            for model in struct:
+                for chain in model:
+                    chain.id = 'p'
+            
+            io = PDB.PDBIO()
+            io.set_structure(struct)
+            io.save(os.path.join(run_dir, target_pocket_file))
+            print(f"✅ Created {target_pocket_file} with chain 'p' for Superposer.")
+            
+        except Exception as e:
+            print(f"❌ Error preparing pocket PDB: {e}")
+            return
+            
 
         # 3. Define Parameters
         pep_length = length_slider.value
         n_peps = num_peptides_slider.value
         n_threads = threads_slider.value
-        
-        # Paths to scripts (Assuming repo structure)
-        base_dir = os.getcwd() # Should be /content/FrankPEPstein
-        scripts_dir = os.path.join(base_dir, "scripts")
-        db_path = os.path.abspath(os.path.join(base_dir, "DB", "minipockets_surface80_winsize3_size3_curated-db"))
         
         if not os.path.exists(db_path):
              print(f"❌ Error: Database not found at {db_path}")
@@ -97,24 +141,19 @@ def run_frankpepstein_pipeline(b):
         print(f"Target Length: {pep_length}")
         print(f"Output Count : {n_peps}")
         print(f"Threads      : {n_threads}")
-        print(f"Box Center   : {box_center}")
-        print(f"Box Size     : {box_size}")
-        print("------------------------------")
 
         # --- A. SUPERPOSER (Fragment Scanning) ---
         print("\n🚀 Starting Step 1: Fragment Scanning (Superposer)...")
         
         superposer_script = os.path.join(scripts_dir, "superposerV5.2_leave1out.py")
         
-        # Arguments for superposer
-        # -T target -d db -a 3 -r 0.1 -x_center ... -x_size ... -t threads -fm db
-        
+        # Uses target_pocket_file (chain p) as -T
         cmd_superposer = [
             frank_python, superposer_script,
-            "-T", target_receptor,
+            "-T", target_pocket_file, 
             "-d", db_path,
-            "-a", "3", # Aligned residues (default)
-            "-r", "0.1", # RMSD (default)
+            "-a", "3", 
+            "-r", "0.1",
             "-x_center", str(box_center[0]),
             "-y_center", str(box_center[1]),
             "-z_center", str(box_center[2]),

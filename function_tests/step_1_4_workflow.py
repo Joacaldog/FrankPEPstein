@@ -60,9 +60,9 @@ else:
         if os.path.exists(clean_name):
             os.remove(clean_name)
         os.rename(raw_filename, clean_name)
-        receptor_filename = clean_name
+        receptor_filename = os.path.abspath(clean_name)
     else:
-        receptor_filename = raw_filename
+        receptor_filename = os.path.abspath(raw_filename)
         
     print(f"Receptor: {receptor_filename}")
 
@@ -74,8 +74,23 @@ else:
             subprocess.run(f"fpocket -f '{receptor_filename}'", shell=True, check=True)
             
             # Robust folder finding
-            base_name = os.path.splitext(receptor_filename)[0]
-            possible_folders = [f"{receptor_filename}_out", f"{base_name}_out"]
+            # fpocket creates output based on the filename in the SAME directory
+            # receptor_filename is absolute, so output should be absolute too?
+            # fpocket output format: /path/to/file_out/
+            
+            base_name_no_ext = os.path.splitext(os.path.basename(receptor_filename))[0]
+            base_dir = os.path.dirname(receptor_filename)
+            
+            # Possible output folder names
+            folder_name_1 = f"{os.path.basename(receptor_filename)}_out"
+            folder_name_2 = f"{base_name_no_ext}_out"
+            
+            # Check in the same directory as the receptor
+            possible_folders = [
+                os.path.join(base_dir, folder_name_1),
+                os.path.join(base_dir, folder_name_2)
+            ]
+            
             output_folder = next((f for f in possible_folders if os.path.exists(f)), None)
 
             if output_folder:
@@ -83,10 +98,11 @@ else:
                 if os.path.exists(pockets_dir):
                     final_pockets_list = [f for f in os.listdir(pockets_dir) if f.endswith(".pdb")]
                     print(f"Auto-detection finished. Found {len(final_pockets_list)} pockets.")
+                    pockets_dir = os.path.abspath(pockets_dir) # Ensure absolute
                 else:
-                    print("Warning: pockets subdirectory not found.")
+                    print(f"Warning: pockets subdirectory not found in {output_folder}")
             else:
-                print("Error: fpocket output not found.")
+                print("Error: fpocket output not found. Checked:", possible_folders)
                 
         except subprocess.CalledProcessError:
              print("Error running fpocket.")
