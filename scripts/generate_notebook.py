@@ -14,7 +14,7 @@ nb = new_notebook()
 
 # --- Title Cell ---
 nb.cells.append(new_markdown_cell("""
-# 🧟‍♂️ **FrankPEPstein: De Novo Peptide Generation** 🧟‍♂️
+# **FrankPEPstein: De Novo Peptide Generation**
 ### *Fragment-based generation of high-affinity peptides for protein pockets.*
 
 **Steps:**

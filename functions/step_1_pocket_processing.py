@@ -374,11 +374,11 @@ def extract_and_calculate_box(b):
     output_log.clear_output()
     with output_log:
         if 'pocket_dropdown' not in globals() or not pocket_dropdown.value:
-            print("❌ No pocket selected.")
+            print("No pocket selected.")
             return
         
         if 'receptor_filename' not in globals() or not receptor_filename:
-             print("❌ Receptor not defined.")
+             print("Receptor not defined.")
              return
 
         selected_pocket = pocket_dropdown.value
@@ -418,7 +418,7 @@ def extract_and_calculate_box(b):
                 "extracted_pocket_path": extracted_pocket_path
             })
         else:
-            print("❌ Extraction Failed.")
+            print("Extraction Failed.")
 
 extract_btn = widgets.Button(
     description='Extract Pocket & Calculate Box',

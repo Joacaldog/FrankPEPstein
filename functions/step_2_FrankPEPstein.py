@@ -60,7 +60,7 @@ def run_frankpepstein_pipeline(b):
             except: pass
 
         if 'box_center' not in globals() or 'extracted_pocket_path' not in globals():
-            print("❌ Error: Missing pipeline state (Pocket/Box). Run Step 1/4 first.")
+            print("Error: Missing pipeline state (Pocket/Box). Run Step 1/4 first.")
             return
 
         # Setup Paths
@@ -82,18 +82,18 @@ def run_frankpepstein_pipeline(b):
         if os.path.exists(run_dir): shutil.rmtree(run_dir)
         os.makedirs(run_dir)
         
-        print(f"🚀 Initializing Run in {run_dir}...")
+        print(f"Initializing Run in {run_dir}...")
         
         # 0. Copy Receptor
         target_receptor = "receptor.pdb"
         try:
             shutil.copy(receptor_filename, os.path.join(run_dir, target_receptor))
         except:
-            print("❌ Error copying receptor.")
+            print("Error copying receptor.")
             return
 
         # 1. Prepare Pocket (Rename Chain 'p')
-        print("⚙️  Preparing Pocket...")
+        print("Preparing Pocket...")
         prep_script = os.path.join(run_dir, "prep_pocket.py")
         target_pocket = "target_pocket.pdb"
         
@@ -118,11 +118,11 @@ except Exception as e: print(e)
         subprocess.run([frank_python, prep_script], check=True)
         
         if not os.path.exists(os.path.join(run_dir, target_pocket)):
-            print("❌ Pocket preparation failed.")
+            print("Pocket preparation failed.")
             return
 
         # 2. Superposer (Step 1)
-        print("\n🔹 Step 1: Fragment Scanning (Superposer)...")
+        print("\nStep 1: Fragment Scanning (Superposer)...")
         # Ensure 'click' and 'adfr' in PATH
         env = os.environ.copy()
         
@@ -163,7 +163,7 @@ except Exception as e: print(e)
             from IPython.display import display, clear_output
             
             # Initial view
-            print("👀 Visualization Active (Updates every 10s)...")
+            print("Visualization Active (Updates every 10s)...")
             
             seen_fragments = 0
             
@@ -186,7 +186,7 @@ except Exception as e: print(e)
             # Run Superposer
             # Check DB exist
             if not os.path.exists(complexes_path):
-                 print(f"⚠️ Warning: Complex DB not found at {complexes_path}")
+                 print(f"Warning: Complex DB not found at {complexes_path}")
             
             process = subprocess.Popen(cmd_super, cwd=run_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
             
@@ -201,7 +201,7 @@ except Exception as e: print(e)
             
         except Exception as e:
             stop_event.set()
-            print(f"❌ Error: {e}")
+            print(f"Error: {e}")
             return
 
         # 3. Patch Clustering (Step 2 & 3)
@@ -212,9 +212,9 @@ except Exception as e: print(e)
         n_peps = num_peptides_slider.value
         
         # A. Filter (FrankVINA I)
-        print("\n🔹 Step 2: Patch Filtering...")
+        print("\nStep 2: Patch Filtering...")
         if not os.path.exists(super_out_dir):
-            print("❌ No Superposer output.")
+            print("No Superposer output.")
             return
 
         # Copy receptor to output dir for Vina
@@ -224,27 +224,27 @@ except Exception as e: print(e)
         subprocess.run([frank_python, vina_script_1, target_receptor, str(threads_slider.value)], cwd=super_out_dir, check=True, env=env)
         
         # B. Cluster
-        print("\n🔹 Step 3: Clustering...")
+        print("\nStep 3: Clustering...")
         patches_dir = os.path.join(super_out_dir, "top_10_patches")
         if not os.path.exists(patches_dir):
-            print("❌ No qualified patches found.")
+            print("No qualified patches found.")
             return
             
         clust_script = os.path.join(scripts_dir, "patch_clustering_V8.7.py")
         subprocess.run([frank_python, clust_script, "-w", str(pep_len), "-t", str(threads_slider.value)], cwd=patches_dir, check=True, env=env)
         
         # C. Score (FrankVINA II)
-        print("\n🔹 Step 4: Final Scoring...")
+        print("\nStep 4: Final Scoring...")
         final_dir = os.path.join(patches_dir, f"frankPEPstein_{pep_len}")
         if not os.path.exists(final_dir):
-             print("❌ Clustering failed.")
+             print("Clustering failed.")
              return
         
         shutil.copy(os.path.join(run_dir, target_receptor), os.path.join(final_dir, target_receptor))
         vina_script_2 = os.path.join(scripts_dir, "frankVINA_V3.py")
         subprocess.run([frank_python, vina_script_2, target_receptor, str(threads_slider.value), str(n_peps)], cwd=final_dir, check=True, env=env)
         
-        print("\n🎉 Pipeline Finished!")
+        print("\nPipeline Finished!")
         # Show Top Results?
         results_file = os.path.join(final_dir, f"top_{n_peps}_peps", f"top{n_peps}_peps.tsv")
         if os.path.exists(results_file):
