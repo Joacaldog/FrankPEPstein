@@ -1,13 +1,9 @@
 import os
 import sys
 
-
-scripts_dir = os.path.dirname(os.path.realpath(__file__))
-# Note: minipockets db is assumed to be in ../DB relative to scripts
-db_path = os.path.abspath(os.path.join(scripts_dir, "../DB/minipockets_surface80_winsize3_size3_curated-db"))
 initial_path = os.getcwd()
 minipockets_folder = sys.argv[1]
-cmd1 = f'python3 "{scripts_dir}/superposerV5.2_leave1out.py" -T pocket.pdb -d "{db_path}" -r 0.1 -t 36 -a 3 -fm {minipockets_folder}'
+cmd1 = f'python3 /work/joagutierrez/scripts/superposerV5.2_leave1out_cluster.py -T pocket.pdb -d /work/joagutierrez/FrankPEPstein/filtered_DB_P5-15_R30_id10 -r 0.1 -t 32 -a 3 -fm {minipockets_folder}'
 
 for folder in next(os.walk('.'))[1]:
     os.chdir(initial_path)
@@ -40,7 +36,7 @@ for folder in next(os.walk('.'))[1]:
             os.system(superposer_cmd)
             os.chdir("superpockets_residuesAligned3_RMSD0.1")
             os.system(f'cp ../receptor.pdb .')
-            os.system(f'python3 "{scripts_dir}/frankVINA_FNKPSTN.py" receptor.pdb 36')
+            os.system(f'python3 /work/joagutierrez/scripts/frankVINA_FNKPSTN_cluster.py receptor.pdb 32')
             os.system("rm * 2> /dev/null")
     if os.path.isdir(base_path):
         print(folder, "already processed")

@@ -113,24 +113,13 @@ def scoring_filter():
                 patch_file = selected[1].replace(".log", ".pdb")
                 run_cmd(f"mv MinPEP_{patch_file.replace('.pdb', '')}_out.pdbqt {folder_output3} 2> /dev/null")
 
-
-def get_reduce_dict_path():
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    # Try generic relative path first (standard repo structure)
-    dict_path = os.path.abspath(os.path.join(script_dir, "../DB/reduce_wwPDB_het_dict.txt"))
-    if os.path.exists(dict_path):
-        return f'"{dict_path}"'
-    
-    # Fallback to local or env var if needed, or just return filename if in PATH
-    return "reduce_wwPDB_het_dict.txt"
-
 def main():
     # 1) Crear temp_folder
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")
 
-    reduce_dict = get_reduce_dict_path()
-    run_cmd(f"reduce -Quiet -DB {reduce_dict} {receptor_file} 1> temp_folder/H_{receptor_file} 2> /dev/null")
+    # reduce receptor
+    run_cmd(f"reduce -Quiet -DB /work/joagutierrez/scripts/reduce_wwPDB_het_dict.txt {receptor_file} 1> temp_folder/H_{receptor_file} 2> /dev/null")
 
     os.chdir("temp_folder")
     run_cmd(f"sed -i '/END/d' H_{receptor_file} ; prepare_receptor -r H_{receptor_file} -o MinREC_{receptor_file}qt 1> /dev/null 2> /dev/null")
@@ -140,36 +129,37 @@ def main():
         os.makedirs("results_folder")
 
     def vina_scorer(file):
-        os.chdir(frank_folder_init)
-        if "noEND" not in file:
-            run_cmd(f"mv {file} temp_folder 2> /dev/null")
-            os.chdir("temp_folder")
-            minimization(file.replace(".pdb", ""), "pep")
-            min_file = f"min_{file.replace('.pdb','')}.pdb"
-            run_cmd(f"cat H_{receptor_file} {min_file} > complex_{min_file} 2> /dev/null")
-            complex_file = f"complex_{min_file.replace('.pdb','')}"
-            minimization(complex_file, "prot")
-            complex_min_file = f'{complex_file}_min.pdb'
-            reduce_dict = get_reduce_dict_path()
-            run_cmd(
-                f'cat {complex_min_file} | grep " x " | grep -v "TER" 1> MinPEP_{min_file} 2> /dev/null ; '
-                f'reduce -Quiet -DB {reduce_dict} MinPEP_{min_file} 1> H_MinPEP_{min_file} 2> /dev/null ; '
-                f"sed -i '/END/d' H_MinPEP_{min_file} ; "
-                f"prepare_ligand -l H_MinPEP_{min_file} -o MinPEP_{min_file.replace('.pdb', '.pdbqt')} 1> /dev/null 2> /dev/null"
-            )
-            log_file = f"{min_file.replace('.pdb','')}.log"
-            cmd_vina = (
-                f"vina --verbosity 0 --autobox --local_only "
-                f"--receptor MinREC_{receptor_file}qt --ligand MinPEP_{min_file.replace('.pdb', '.pdbqt')} > {log_file}"
-            )
-            run_cmd(cmd_vina)
-            out_pdbqt = f"MinPEP_{min_file.replace('.pdb','')}_out.pdbqt"
-            run_cmd(f"mv {out_pdbqt} {log_file} ../results_folder")
-            run_cmd(
-                f"rm {complex_min_file} MinREC_{receptor_file} complex_{min_file} MinPEP_{min_file}qt "
-                f"H_MinPEP_{min_file} MinREC_{min_file}qt {complex_file}_min.pdb MinPEP_{min_file} "
-                f"{min_file} min_{file.replace('.pdb','')} 2> /dev/null"
-            )
+        if fnmatch.fnmatch(file, 'frag*.pdb'):
+            os.chdir(frank_folder_init)
+            if "noEND" not in file:
+                run_cmd(f"mv {file} temp_folder 2> /dev/null")
+                os.chdir("temp_folder")
+                minimization(file.replace(".pdb", ""), "pep")
+                min_file = f"min_{file.replace('.pdb','')}.pdb"
+                run_cmd(f"cat H_{receptor_file} {min_file} > complex_{min_file} 2> /dev/null")
+                complex_file = f"complex_{min_file.replace('.pdb','')}"
+                minimization(complex_file, "prot")
+                complex_min_file = f'{complex_file}_min.pdb'
+                run_cmd(
+                    f'cat {complex_min_file} | grep " x " | grep -v "TER" 1> MinPEP_{min_file} 2> /dev/null ; '
+                    f'reduce -Quiet -DB /work/joagutierrez/scripts/reduce_wwPDB_het_dict.txt MinPEP_{min_file} 1> H_MinPEP_{min_file} 2> /dev/null ; '
+                    f"sed -i '/END/d' H_MinPEP_{min_file} ; "
+                    # f"prepare_ligand -A bonds,bonds_hydrogens,hydrogens -g -l H_MinPEP_{min_file} -o MinPEP_{min_file.replace('.pdb', '.pdbqt')} 1> /dev/null 2> /dev/null"
+                    f"prepare_ligand -l H_MinPEP_{min_file} -o MinPEP_{min_file.replace('.pdb', '.pdbqt')} 1> /dev/null 2> /dev/null"
+                )
+                log_file = f"{min_file.replace('.pdb','')}.log"
+                cmd_vina = (
+                    f"/work/joagutierrez/utilities/./vina_1.2.4_linux_x86_64 --verbosity 0 --autobox --local_only "
+                    f"--receptor MinREC_{receptor_file}qt --ligand MinPEP_{min_file.replace('.pdb', '.pdbqt')} > {log_file}"
+                )
+                run_cmd(cmd_vina)
+                out_pdbqt = f"MinPEP_{min_file.replace('.pdb','')}_out.pdbqt"
+                run_cmd(f"mv {out_pdbqt} {log_file} ../results_folder")
+                run_cmd(
+                    f"rm {complex_min_file} MinREC_{receptor_file} complex_{min_file} MinPEP_{min_file}qt "
+                    f"H_MinPEP_{min_file} MinREC_{min_file}qt {complex_file}_min.pdb MinPEP_{min_file} "
+                    f"{min_file} min_{file.replace('.pdb','')} 2> /dev/null"
+                )
 
     # Filtrar los 'frag*.pdb'
     all_files = os.listdir(".")
@@ -205,6 +195,7 @@ def main():
                 run_cmd(f"obabel -ipdbqt {pep_pdbqt} -o pdb -O {base}.pdb ; rm {pep_pdbqt}")
     else:
         print(f"No final candidates found in {current_dir}.")
+
 def main_wrapper():
     main()
 
