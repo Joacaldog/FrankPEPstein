@@ -1,7 +1,0 @@
-#dr_sasa v0.5
-/Users/joacaldo/Desktop/test_frankpepstein2/BioLiP_updated_set/complexes/7ugb_A_I/7ugb_A_I.pdb
-Selected complex surface (A^2):	16820.3
-#Automatic molecular contact solver selected.
-LIGAND <--- PROTEIN buried surface (A^2):	3325.37
-LIGAND ---> PROTEIN buried surface (A^2):	4001.88
-Interface LIGAND/PROTEIN (A^2):	3663.62

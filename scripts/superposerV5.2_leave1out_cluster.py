@@ -45,6 +45,8 @@ parser.add_argument("-fm", "--folder_minipockets", type=str,
                     help="folder containing minipockets", required=True)
 
 args = parser.parse_args()
+import config
+
 fau_file = args.target_receptor
 pepbdb_folder = args.pepbdb_folder
 cutoff = args.aligned_residues
@@ -68,10 +70,13 @@ if not os.path.exists(folder_output):
 
 working_directory = os.getcwd()
 
-os.system(f'cp {fau_file} {folder_temp}')
-# os.system(f"cp /home/Click/superposer/Parameters.inp {folder_temp}")
-# os.system(f"cp ~/Tesis/pep_gen/scripts/Parameters_for_search/Parameters.inp {folder_temp}")
-os.system(f"cp /work/joagutierrez/scripts/Parameters.inp {folder_temp}")
+os.system(f'cp "{fau_file}" "{folder_temp}"')
+# Copy Parameters.inp from config location
+params_inp = os.path.join(config.CLICK_DIR, "Parameters.inp")
+if os.path.exists(params_inp):
+    os.system(f'cp "{params_inp}" "{folder_temp}"')
+else:
+    print(f"Warning: Parameters.inp not found at {params_inp}")
 
 def run_click(file):
     try:
@@ -113,8 +118,13 @@ def run_click(file):
                 out_file1 = (f"{file_noExtension}-{Faufile_noExtension}.1.pdb")
                 sup_needed1 = (f"{Faufile_noExtension}-{file_noExtension}.1.pdb")
                 # print("-------", folder, peptide_chain, patch, patch_length, "-------")
-                os.system(f"cp {folder_file} .")
-                cmd = (f"click {file} {Faufile_noExtension}.pdb 1> /dev/null 2> /dev/null")
+                # Ensure click is in PATH
+                if config.CLICK_DIR not in os.environ["PATH"]:
+                    os.environ["PATH"] += os.pathsep + config.CLICK_DIR + os.pathsep + os.path.join(config.CLICK_DIR, "bin")
+
+                os.system(f'cp "{folder_file}" .')
+                # Using 'click' assuming it's in PATH now
+                cmd = (f'click "{file}" "{Faufile_noExtension}.pdb" 1> /dev/null 2> /dev/null')
                 os.system(cmd)
                 pass_criteria = 0
                 if os.path.exists(log_file1):

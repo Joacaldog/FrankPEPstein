@@ -3,11 +3,7 @@ import sys
 from tqdm import tqdm
 import fnmatch
 from operator import itemgetter
-from modeller import *
-from modeller.scripts import complete_pdb
-from modeller.optimizers import ConjugateGradients, MolecularDynamics
-from modeller.automodel import autosched
-from modeller import log
+
 from joblib import Parallel, delayed
 import math
 import multiprocessing
@@ -51,18 +47,28 @@ def scoring_filter():
     # return file_list
 
 
+import config
+
+# Helper to get full path for ADFR tools
+def get_adfr_tool(tool_name):
+    return os.path.join(config.ADFR_BIN, tool_name)
+
 def main():
-    os.system(f"reduce -Quiet -DB /work/joagutierrez/scripts/reduce_wwPDB_het_dict.txt {receptor_file} 1> H_{receptor_file} 2> /dev/null")
+    reduce_bin = get_adfr_tool("reduce")
+    prepare_receptor_bin = get_adfr_tool("prepare_receptor")
+    prepare_ligand_bin = get_adfr_tool("prepare_ligand")
+
+    os.system(f"{reduce_bin} -Quiet -DB {config.REDUCE_DICT_PATH} {receptor_file} 1> H_{receptor_file} 2> /dev/null")
     os.system(f"sed -i '/END/d' H_{receptor_file}")
-    os.system(f'prepare_receptor -r H_{receptor_file} -o {receptor_file}qt 1> /dev/null 2> /dev/null')
+    os.system(f'{prepare_receptor_bin} -r H_{receptor_file} -o {receptor_file}qt 1> /dev/null 2> /dev/null')
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")
     def vina_scorer(file):
         if fnmatch.fnmatch(file, 'patch_file*.pdb'):
-            os.system(f"reduce -Quiet -DB /work/joagutierrez/scripts/reduce_wwPDB_het_dict.txt {file} 1> H_{file} 2> /dev/null")
+            os.system(f"{reduce_bin} -Quiet -DB {config.REDUCE_DICT_PATH} {file} 1> H_{file} 2> /dev/null")
             # os.system(f'prepare_ligand -A bonds,bonds_hydrogens,hydrogens -g -l H_{file} -o {file.replace(".pdb", ".pdbqt")} 1> /dev/null 2> /dev/null')
-            os.system(f'prepare_ligand -l H_{file} -o {file.replace(".pdb", ".pdbqt")} 1> /dev/null 2> /dev/null')
-            os.system(f'/work/joagutierrez/utilities/./vina_1.2.4_linux_x86_64 --verbosity 0 --autobox --local_only --receptor {receptor_file}qt --ligand {file}qt > {file.replace(".pdb", "")}.log')
+            os.system(f'{prepare_ligand_bin} -l H_{file} -o {file.replace(".pdb", ".pdbqt")} 1> /dev/null 2> /dev/null')
+            os.system(f'{config.VINA_PATH} --verbosity 0 --autobox --local_only --receptor {receptor_file}qt --ligand {file}qt > {file.replace(".pdb", "")}.log')
             os.system(f'mv {file.replace(".pdb", "_out.pdbqt")} {file.replace(".pdb", "")}.log temp_folder')
             os.system(f'rm H_{file} {file}qt 2> /dev/null')
 

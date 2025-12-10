@@ -9,8 +9,13 @@ run_frankpepstein/
 *.pdb
 utilities/*.tar.gz
 !utilities/Click.tar.gz
-DB/*.tar.gz
-DB/reduce_wwPDB_het_dict.txt
-utilities/ADFRsuite_x86_64Linux_1.0
-DB/reduce_wwPDB_het_dict.txt.tar.gz
-DB/reduce_wwPDB_het_dict.tar.gz
+./DB/
+
+# Keep gitkeep if present (optional, but good practice)
+!DB/.gitkeep
+
+# Ignore test environment
+FrankPEPstein_test/
+# Ignore generated debug notebooks and backups
+FrankPEPstein_DEBUG.ipynb
+generate_debug_notebook_backup.py

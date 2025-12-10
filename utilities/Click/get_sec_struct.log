@@ -1,0 +1,87 @@
+
+                         MODELLER 9.10, 2011/09/28, r8346
+
+     PROTEIN STRUCTURE MODELLING BY SATISFACTION OF SPATIAL RESTRAINTS
+
+
+                     Copyright(c) 1989-2011 Andrej Sali
+                            All Rights Reserved
+
+                             Written by A. Sali
+                               with help from
+           B. Webb, M.S. Madhusudhan, M-Y. Shen, M.A. Marti-Renom,
+                N. Eswar, F. Alber, M. Topf, B. Oliva, A. Fiser,
+                    R. Sanchez, B. Yerkovich, A. Badretdinov,
+                      F. Melo, J.P. Overington, E. Feyfant
+                 University of California, San Francisco, USA
+                    Rockefeller University, New York, USA
+                      Harvard University, Cambridge, USA
+                   Imperial Cancer Research Fund, London, UK
+              Birkbeck College, University of London, London, UK
+
+
+Kind, OS, HostName, Kernel, Processor: 4, Linux RM7-16 2.6.32-41-generic x86_64
+Date and time of compilation         : 2011/09/28 18:39:17
+MODELLER executable type             : x86_64-intel8
+Job starting time (YY/MM/DD HH:MM:SS): 2012/11/22 12:44:19
+
+openf___224_> Open           $(LIB)/restyp.lib
+openf___224_> Open           ${MODINSTALL9v10}/modlib/resgrp.lib
+rdresgr_266_> Number of residue groups:        2
+openf___224_> Open           ${MODINSTALL9v10}/modlib/sstruc.lib
+
+Dynamically allocated memory at   amaxlibraries [B,KiB,MiB]:      3234076    3158.277     3.084
+
+Dynamically allocated memory at   amaxlibraries [B,KiB,MiB]:      3234604    3158.793     3.085
+openf___224_> Open           ${MODINSTALL9v10}/modlib/resdih.lib
+
+Dynamically allocated memory at   amaxlibraries [B,KiB,MiB]:      3283204    3206.254     3.131
+rdrdih__263_> Number of dihedral angle types         :        9
+              Maximal number of dihedral angle optima:        3
+              Dihedral angle names                   :  Alph Phi Psi Omeg chi1 chi2 chi3 chi4 chi5
+openf___224_> Open           ${MODINSTALL9v10}/modlib/radii.lib
+
+Dynamically allocated memory at   amaxlibraries [B,KiB,MiB]:      3292444    3215.277     3.140
+openf___224_> Open           ${MODINSTALL9v10}/modlib/radii14.lib
+openf___224_> Open           ${MODINSTALL9v10}/modlib/af_mnchdef.lib
+rdwilmo_274_> Mainchain residue conformation classes:  APBLE
+openf___224_> Open           ${MODINSTALL9v10}/modlib/mnch.lib
+rdclass_257_> Number of classes:        5
+openf___224_> Open           ${MODINSTALL9v10}/modlib/mnch1.lib
+openf___224_> Open           ${MODINSTALL9v10}/modlib/mnch2.lib
+openf___224_> Open           ${MODINSTALL9v10}/modlib/mnch3.lib
+openf___224_> Open           ${MODINSTALL9v10}/modlib/xs4.mat
+rdrrwgh_268_> Number of residue types:       21
+openf___224_> Open           ./data/1ysa-2ayg/1YSA.pdb
+
+Dynamically allocated memory at       amaxmodel [B,KiB,MiB]:      3413760    3333.750     3.256
+read_mo_297_> Segments, residues, atoms:        2      114      941
+read_mo_298_> Segment:        1   225 C   281 C      472
+read_mo_298_> Segment:        2   224 D   280 D      469
+openf___224_> Open           ./data/1ysa-2ayg/1YSA.pdb.ssm
+write_d_637W> No residue topology library is in memory.
+              Better radii would be used if topology.read() is called first.
+iup2crm_280W> No topology library in memory or assigning a BLK residue.
+              Default CHARMM atom type assigned:  N -->  N
+              This message is written only for the first such atom.
+openf___224_> Open           ./data/1ysa-2ayg/1YSA.pdb.sol
+openf___224_> Open           ./data/1ysa-2ayg/1YSA.pdb.psa
+openf___224_> Open           ./data/1ysa-2ayg/2AYG.pdb
+
+Dynamically allocated memory at       amaxmodel [B,KiB,MiB]:      3593614    3509.389     3.427
+read_mo_297_> Segments, residues, atoms:        2      174     1444
+read_mo_298_> Segment:        1   281 A   366 A      722
+read_mo_298_> Segment:        2   281 B   366 B      722
+openf___224_> Open           ./data/1ysa-2ayg/2AYG.pdb.ssm
+write_d_637W> No residue topology library is in memory.
+              Better radii would be used if topology.read() is called first.
+iup2crm_280W> No topology library in memory or assigning a BLK residue.
+              Default CHARMM atom type assigned:  N -->  N
+              This message is written only for the first such atom.
+openf___224_> Open           ./data/1ysa-2ayg/2AYG.pdb.sol
+openf___224_> Open           ./data/1ysa-2ayg/2AYG.pdb.psa
+
+Dynamically allocated memory at          finish [B,KiB,MiB]:      3472474    3391.088     3.312
+Starting time                                            : 2012/11/22 12:44:19
+Closing time                                             : 2012/11/22 12:44:20
+Total CPU time [seconds]                                 :       0.37

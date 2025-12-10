@@ -113,16 +113,26 @@ def scoring_filter():
                 patch_file = selected[1].replace(".log", ".pdb")
                 run_cmd(f"mv MinPEP_{patch_file.replace('.pdb', '')}_out.pdbqt {folder_output3} 2> /dev/null")
 
+import config
+
+# Helper to get full path for ADFR tools
+def get_adfr_tool(tool_name):
+    return os.path.join(config.ADFR_BIN, tool_name)
+
 def main():
     # 1) Crear temp_folder
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")
 
     # reduce receptor
-    run_cmd(f"reduce -Quiet -DB /work/joagutierrez/scripts/reduce_wwPDB_het_dict.txt {receptor_file} 1> temp_folder/H_{receptor_file} 2> /dev/null")
+    reduce_bin = get_adfr_tool("reduce")
+    prepare_receptor_bin = get_adfr_tool("prepare_receptor")
+    prepare_ligand_bin = get_adfr_tool("prepare_ligand")
+    
+    run_cmd(f"{reduce_bin} -Quiet -DB {config.REDUCE_DICT_PATH} {receptor_file} 1> temp_folder/H_{receptor_file} 2> /dev/null")
 
     os.chdir("temp_folder")
-    run_cmd(f"sed -i '/END/d' H_{receptor_file} ; prepare_receptor -r H_{receptor_file} -o MinREC_{receptor_file}qt 1> /dev/null 2> /dev/null")
+    run_cmd(f"sed -i '/END/d' H_{receptor_file} ; {prepare_receptor_bin} -r H_{receptor_file} -o MinREC_{receptor_file}qt 1> /dev/null 2> /dev/null")
     os.chdir(frank_folder_init)
 
     if not os.path.exists("results_folder"):
@@ -142,14 +152,14 @@ def main():
                 complex_min_file = f'{complex_file}_min.pdb'
                 run_cmd(
                     f'cat {complex_min_file} | grep " x " | grep -v "TER" 1> MinPEP_{min_file} 2> /dev/null ; '
-                    f'reduce -Quiet -DB /work/joagutierrez/scripts/reduce_wwPDB_het_dict.txt MinPEP_{min_file} 1> H_MinPEP_{min_file} 2> /dev/null ; '
+                    f'{reduce_bin} -Quiet -DB {config.REDUCE_DICT_PATH} MinPEP_{min_file} 1> H_MinPEP_{min_file} 2> /dev/null ; '
                     f"sed -i '/END/d' H_MinPEP_{min_file} ; "
                     # f"prepare_ligand -A bonds,bonds_hydrogens,hydrogens -g -l H_MinPEP_{min_file} -o MinPEP_{min_file.replace('.pdb', '.pdbqt')} 1> /dev/null 2> /dev/null"
-                    f"prepare_ligand -l H_MinPEP_{min_file} -o MinPEP_{min_file.replace('.pdb', '.pdbqt')} 1> /dev/null 2> /dev/null"
+                    f"{prepare_ligand_bin} -l H_MinPEP_{min_file} -o MinPEP_{min_file.replace('.pdb', '.pdbqt')} 1> /dev/null 2> /dev/null"
                 )
                 log_file = f"{min_file.replace('.pdb','')}.log"
                 cmd_vina = (
-                    f"/work/joagutierrez/utilities/./vina_1.2.4_linux_x86_64 --verbosity 0 --autobox --local_only "
+                    f"{config.VINA_PATH} --verbosity 0 --autobox --local_only "
                     f"--receptor MinREC_{receptor_file}qt --ligand MinPEP_{min_file.replace('.pdb', '.pdbqt')} > {log_file}"
                 )
                 run_cmd(cmd_vina)
