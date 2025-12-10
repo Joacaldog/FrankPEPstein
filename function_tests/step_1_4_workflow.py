@@ -44,10 +44,26 @@ final_pockets_list = []
 print(f"--- Upload Receptor PDB ({detection_mode}) ---")
 uploaded_r = files.upload()
 
+import re
+
 if not uploaded_r:
     print("No receptor file uploaded.")
 else:
-    receptor_filename = list(uploaded_r.keys())[0]
+    raw_filename = list(uploaded_r.keys())[0]
+        
+    # Check for Colab duplicate naming (e.g. receptor(1).pdb)
+    match = re.search(r'^(.*?)\s?\(\d+\)(\.[^.]*)?$', raw_filename)
+    if match:
+        clean_name = match.group(1) + (match.group(2) if match.group(2) else "")
+        print(f"Detected duplicate upload: {raw_filename} -> overwriting {clean_name}")
+        
+        if os.path.exists(clean_name):
+            os.remove(clean_name)
+        os.rename(raw_filename, clean_name)
+        receptor_filename = clean_name
+    else:
+        receptor_filename = raw_filename
+        
     print(f"Receptor: {receptor_filename}")
 
     # --- 2. Pocket Handling ---
@@ -79,11 +95,36 @@ else:
         print(f"\n--- Upload Manual Pocket PDB ---")
         os.makedirs(pockets_dir, exist_ok=True)
         uploaded_p = files.upload()
+        import re
         if uploaded_p:
             for p_file in uploaded_p.keys():
-                # Move to a pockets folder to keep structure consistent
-                os.rename(p_file, os.path.join(pockets_dir, p_file))
-                final_pockets_list.append(p_file)
+                # Colab renames duplicate uploads to filename(1).ext. 
+                # User wants to overwrite instead.
+                
+                # Check for pattern like "name(1).pdb" or "name (1).pdb"
+                # Regex matches: (any content) optional space (digits) (extension)
+                match = re.search(r'^(.*?)\s?\(\d+\)(\.[^.]*)?$', p_file)
+                
+                if match:
+                    clean_name = match.group(1) + (match.group(2) if match.group(2) else "")
+                    print(f"Detected duplicate upload: {p_file} -> overwriting {clean_name}")
+                else:
+                    clean_name = p_file
+
+                target_path = os.path.join(pockets_dir, clean_name)
+                
+                # If target exists, log that we are replacing it
+                if os.path.exists(target_path):
+                    print(f"Replacing existing file: {clean_name}")
+                    os.remove(target_path)
+                
+                # Move (rename) the uploaded file to the target path
+                # Note: 'p_file' is in CWD (content/), target is in pockets_dir
+                os.rename(p_file, target_path)
+                
+                if clean_name not in final_pockets_list:
+                    final_pockets_list.append(clean_name)
+                    
             print(f"Manual upload finished. Available pockets: {len(final_pockets_list)}")
 
     # --- 3. Visualization & Selection ---
@@ -109,25 +150,36 @@ else:
             # 2. Add ALL pockets with distinct colors
             colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#008000', '#800000']
             
+            # Regex to find number in filename (e.g. pocket5_atm.pdb -> 5, or just 5.pdb -> 5)
+            import re
+            
             for i, p_file in enumerate(sorted(final_pockets_list)):
                 full_path = os.path.join(pockets_dir, p_file)
                 if os.path.exists(full_path):
                     with open(full_path, 'r') as f:
                         view.addModel(f.read(), "pdb")
                     
-                    # Highlight selected pocket
-                    if p_file == selected_pocket_file:
-                         # Selected: Solid, bright, larger spheres? or just distinct standard color
-                         # Let's make the selected one FLASH or be very obvious.
-                         # Maybe just opaque vs transparent?
-                         view.setStyle({'model': -1}, {'sphere': {'color': 'red', 'opacity': 1.0, 'radius': 1.0}})
+                    # Try to extract a short label (number)
+                    # Common patterns: "pocket5_atm.pdb", "pocket5.pdb", "5.pdb"
+                    match = re.search(r'(\d+)', p_file)
+                    label_text = match.group(1) if match else p_file
+                    
+                    # Determine styling
+                    is_selected = (p_file == selected_pocket_file)
+                    
+                    if is_selected:
+                         color = 'red'
+                         opacity = 1.0
+                         label_style = {'fontSize': 18, 'fontColor': 'red', 'backgroundColor': 'white', 'backgroundOpacity': 0.8, 'border': '2px solid red'}
                     else:
-                        # Others: Different colors, slightly transparent
                         color = colors[i % len(colors)]
-                        view.setStyle({'model': -1}, {'sphere': {'color': color, 'opacity': 0.6}})
-                        
-                    # Add label?
-                    # view.addLabel(p_file, {'fontSize': 12, 'fontColor': 'black', 'backgroundColor': 'white'}, {'model': -1})
+                        opacity = 0.6
+                        label_style = {'fontSize': 12, 'fontColor': 'black', 'backgroundColor': 'white', 'backgroundOpacity': 0.5}
+
+                    view.setStyle({'model': -1}, {'sphere': {'color': color, 'opacity': opacity}})
+                    
+                    # Add 3D Label (Number only)
+                    view.addLabel(label_text, label_style, {'model': -1})
 
             view.zoomTo()
             view.show()
