@@ -41,7 +41,7 @@ def run_setup():
                 import condacolab
                 condacolab.check()
         except (ImportError, AssertionError):
-            print("Installing CondaColab... (Kernel will restart, please run this cell again)")
+            print("Installing CondaColab... (Kernel will restart and colab will say it crashes, you dont need to do anything)")
             with SuppressStdout():
                 subprocess.run("pip install -q condacolab", shell=True, check=True)
                 import condacolab
