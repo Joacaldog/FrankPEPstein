@@ -187,67 +187,62 @@ except Exception as e: print(e)
                 
                 n_frags = len(fragments)
                 
-                # Update every 10s or if first time
-                # We force update for feedback
-                
-                with viz_output:
-                    clear_output(wait=True)
-                    
-                    print(f"Visualization Update: {n_frags} fragments found.")
-                    
-                    view = py3Dmol.view(width=800, height=600)
-                    
-                    # A. Receptor
-                    view.addModel(open(receptor_filename, 'r').read(), "pdb")
-                    view.setStyle({'model': 0}, {}) 
-                    view.addSurface(py3Dmol.SES, {'opacity': 0.3, 'color': 'white'}, {'model': 0})
-                    
-                    # B. Box (Center/Size)
-                    # Convert center/size to min/max
-                    # center is [x, y, z], size is [dx, dy, dz]
-                    b_min = [box_center[i] - box_size[i]/2 for i in range(3)]
-                    b_max = [box_center[i] + box_size[i]/2 for i in range(3)]
-                    
-                    view.addBox({
-                        'center': {'x': box_center[0], 'y': box_center[1], 'z': box_center[2]},
-                        'dimensions': {'w': box_size[0], 'h': box_size[1], 'd': box_size[2]},
-                        'color': 'cyan',
-                        'opacity': 0.5,
-                        'wireframe': True
-                    })
-                    
-                    # C. Fragments (Sample if too many?)
-                    # Loading all might be heavy if thousands. Load last 50?
-                    # or random sample?
-                    # Let's show up to 50 random ones to keep it responsive
-                    import random
-                    viz_frags = fragments
-                    if len(viz_frags) > 50:
-                         viz_frags = random.sample(fragments, 50)
-                         
-                    for frag_file in viz_frags:
-                        frag_path = os.path.join(super_out_dir, frag_file)
-                        try:
-                            view.addModel(open(frag_path, 'r').read(), "pdb")
-                            # Style fragments as sticks, colorful?
-                            # Last added model is -1
-                            view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon'}})
-                        except: pass
+                # Update only if new fragments found or first run
+                if n_frags > seen_fragments or seen_fragments == 0:
+                     seen_fragments = n_frags
+                     
+                     with viz_output:
+                        clear_output(wait=True)
+                        print(f"Visualization Update: {n_frags} fragments found.")
                         
-                    view.zoomTo()
-                    view.show()
+                        view = py3Dmol.view(width=800, height=600)
+                        
+                        # A. Receptor (Defined, not transparent)
+                        view.addModel(open(receptor_filename, 'r').read(), "pdb")
+                        view.setStyle({'model': 0}, {'cartoon': {'color': 'white'}}) 
+                        # Optional: Add faint surface ? User asked for defined.
+                        # view.addSurface(py3Dmol.SES, {'opacity': 0.5, 'color': 'white'}, {'model': 0})
+                        
+                        # B. Box (Red, Defined)
+                        view.addBox({
+                            'center': {'x': box_center[0], 'y': box_center[1], 'z': box_center[2]},
+                            'dimensions': {'w': box_size[0], 'h': box_size[1], 'd': box_size[2]},
+                            'color': 'red',
+                            'opacity': 0.6,
+                            'wireframe': True
+                        })
+                        
+                        # C. Fragments
+                        import random
+                        viz_frags = fragments
+                        if len(viz_frags) > 50:
+                             viz_frags = random.sample(fragments, 50)
+                             
+                        for frag_file in viz_frags:
+                            frag_path = os.path.join(super_out_dir, frag_file)
+                            try:
+                                view.addModel(open(frag_path, 'r').read(), "pdb")
+                                view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon'}})
+                            except: pass
+                            
+                        view.zoomTo()
+                        view.show()
                 
-                time.sleep(10)
+                time.sleep(5)
                 
         viz_thread = threading.Thread(target=viz_monitor)
         viz_thread.start()
         
         try:
             # Run Superposer
-            # Check DB exist
             if not os.path.exists(complexes_path):
                  print(f"Warning: Complex DB not found at {complexes_path}")
             
+            # Print Command
+            print("\nRunning Superposer with command:")
+            print(" ".join(cmd_super))
+            print("-" * 20 + "\n")
+
             process = subprocess.Popen(cmd_super, cwd=run_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
             
             for line in iter(process.stdout.readline, ''):
