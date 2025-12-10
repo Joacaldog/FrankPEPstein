@@ -1,6 +1,5 @@
 import os
 import time
-from tqdm import tqdm
 import fnmatch
 from Bio.PDB import *
 import Bio.PDB
@@ -26,7 +25,7 @@ from operator import itemgetter
 from sklearn.linear_model import LinearRegression
 import random
 
-tqdm._instances.clear()
+
 
 program_description = "Constructs peptides from patches"
 parser = argparse.ArgumentParser(description=program_description)
@@ -226,7 +225,7 @@ def find_outliers_linear_trend(coordinates_list, threshold_multiplier=3.5):
 
 def delete_outsider_frag():
     coordinates_3d = []
-    for file in tqdm(os.listdir("."), total=len(os.listdir(".")), desc="loading structures", position=0, leave=True):
+    for file in os.listdir("."):
         warnings.simplefilter('ignore')
         if fnmatch.fnmatch(file, 'patch_file_*.pdb'):
             name_file = file.replace(".pdb", "")
@@ -264,7 +263,7 @@ def combinator():
         cmd_cp = (f"cp patch_file* {folder_output}")
         os.system(cmd_cp)
     if len([x for x in os.listdir(".") if "patch_file" in x]) > 1:
-        for file in tqdm(os.listdir("."), total=len(os.listdir(".")), desc="loading structures", position=0, leave=True):
+        for file in os.listdir("."):
             try:
                 warnings.simplefilter('ignore')
                 if fnmatch.fnmatch(file, 'patch_file_*.pdb'):
@@ -352,7 +351,7 @@ def combinator():
         len_comb = len(combination_res_list)
         if len_comb >= 100:
             combination_res_list = random.sample(combination_res_list, 100)
-        for final_comb in tqdm(combination_res_list, total=len(combination_res_list), desc="Working on each combination...", position=0, leave=True):
+        for final_comb in combination_res_list:
             res_dist_dict = {}
             res_dist_list = []
             final_peptide = list(itertools.chain.from_iterable(
@@ -450,8 +449,7 @@ def main():
             os.system(f"rm -f {peptide_file} 2> /dev/null")
 
         k_mers_list = []
-        Parallel(n_jobs=threads, backend="threading")(delayed(frag_min)(peptide_ordered, k_mers_list) for peptide_ordered in tqdm(final_peptides_list, total=len(final_peptides_list), 
-                                                                                         desc=f"generating peptides of length {winsize}", position=0, leave=True))
+        Parallel(n_jobs=threads, backend="threading")(delayed(frag_min)(peptide_ordered, k_mers_list) for peptide_ordered in final_peptides_list)
     os.chdir(folder_output)
     os.system("rm *noEND.pdb *connects.txt")
         

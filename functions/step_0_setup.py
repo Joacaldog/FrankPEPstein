@@ -138,11 +138,11 @@ def setup_external_tools(drive_ids=None):
              if not os.path.exists(db_tar):
                  print(f"Downloading DB (ID: {db_id})...")
                  # We assume single big tarball for now based on user context
-                 gdown.download(f'https://drive.google.com/uc?id={db_id}', db_tar, quiet=False)
+                 gdown.download(f'https://drive.google.com/uc?id={db_id}', db_tar, quiet=True)
              
              if os.path.exists(db_tar):
                  print(f"Extracting DB using {extract_flag}...")
-                 subprocess.run(f"tar {extract_flag} {db_tar} -C {db_dir}", shell=True, check=True)
+                 subprocess.run(f"tar {extract_flag} {db_tar} -C {db_dir} > /dev/null 2>&1", shell=True, check=True)
                  # Optional: delete tar to save space?
                  # os.remove(db_tar)
 
@@ -154,8 +154,8 @@ def setup_external_tools(drive_ids=None):
     
     if util_id and not os.path.exists(os.path.join(utilities_dir, "ADFRsuite_x86_64Linux_1.0")):
          if not os.path.exists(util_tar):
-              gdown.download(f'https://drive.google.com/uc?id={util_id}', util_tar, quiet=False)
-         subprocess.run(f"tar {extract_flag} {util_tar} -C {utilities_dir}", shell=True, check=True)
+              gdown.download(f'https://drive.google.com/uc?id={util_id}', util_tar, quiet=True)
+         subprocess.run(f"tar {extract_flag} {util_tar} -C {utilities_dir} > /dev/null 2>&1", shell=True, check=True)
 
     # ADFR Installation / License Check
     # Look for install script

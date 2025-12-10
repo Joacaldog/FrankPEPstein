@@ -1,6 +1,6 @@
 import os
 import sys
-from tqdm import tqdm
+
 import fnmatch
 from operator import itemgetter
 from modeller import *
@@ -16,7 +16,7 @@ import subprocess
 import random  # Para hacer la muestra aleatoria
 
 frank_folder_init = os.getcwd()
-tqdm._instances.clear()
+
 
 receptor_file_chain = sys.argv[1]
 receptor_file = receptor_file_chain
@@ -184,7 +184,7 @@ def main():
     # Paralelizar con joblib usando la lista reducida
     Parallel(n_jobs=int(threads))(
         delayed(vina_scorer)(file)
-        for file in tqdm(frag_files, total=len(frag_files), desc="Minimizing complexes")
+        for file in frag_files
     )
 
     os.chdir("results_folder")

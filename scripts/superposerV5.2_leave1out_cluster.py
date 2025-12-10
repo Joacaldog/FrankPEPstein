@@ -2,7 +2,6 @@
 
 import os
 import sys
-from tqdm import tqdm
 import fnmatch
 from Bio.PDB import *
 import Bio.PDB
@@ -277,7 +276,6 @@ def run_click(file):
         pass
 
 os.chdir(folder_temp)
-Parallel(n_jobs=threads)(delayed(run_click)(file) for file in tqdm(os.listdir(folder_minipockets), total=len(
-    os.listdir(folder_minipockets)), desc="aligning minipockets to target_pocket and defining patches"))
+Parallel(n_jobs=threads)(delayed(run_click)(file) for file in os.listdir(folder_minipockets))
 os.chdir("../")
 os.system("rm -r " + folder_temp)

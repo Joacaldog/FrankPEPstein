@@ -1,6 +1,6 @@
 import os
 import sys
-from tqdm import tqdm
+
 import fnmatch
 from operator import itemgetter
 
@@ -9,7 +9,7 @@ import math
 import multiprocessing
 
 
-tqdm._instances.clear()
+
 
 receptor_file_chain = sys.argv[1]
 receptor_file = receptor_file_chain
@@ -73,8 +73,7 @@ def main():
             os.system(f'rm H_{file} {file}qt 2> /dev/null')
 
 
-    Parallel(n_jobs=int(threads))(delayed(vina_scorer)(file) for file in tqdm(os.listdir("."), total=len(os.listdir(".")), 
-                                                                                        desc=f"filtering peps by energy"))
+    Parallel(n_jobs=int(threads))(delayed(vina_scorer)(file) for file in os.listdir("."))
     os.chdir("temp_folder")
     scoring_filter()
     os.chdir("../")

@@ -155,6 +155,8 @@ except Exception as e: print(e)
         # output folder format: superpockets_residuesAligned3_RMSD0.1
         super_out_dir = os.path.join(run_dir, "superpockets_residuesAligned3_RMSD0.1")
         
+        # viz_monitor writes to global viz_output checking run folder
+        
         stop_event = threading.Event()
         
         def viz_monitor():
@@ -162,22 +164,70 @@ except Exception as e: print(e)
             import time
             from IPython.display import display, clear_output
             
-            # Initial view
-            print("Visualization Active (Updates every 10s)...")
+            # Initial Wait
+            time.sleep(2)
             
             seen_fragments = 0
             
             while not stop_event.is_set():
+                # 1. Check for fragments
+                fragments = []
                 if os.path.exists(super_out_dir):
                     fragments = [f for f in os.listdir(super_out_dir) if f.startswith("patch_file")]
-                    if len(fragments) > seen_fragments:
-                        # Update View
-                        # Ideally we use an Observer, but clearing output is safer for now
-                        # Or just print status
-                        # print(f"\rFound {len(fragments)} fragments...", end="")
-                        pass
-                    seen_fragments = len(fragments)
-                time.sleep(5)
+                
+                n_frags = len(fragments)
+                
+                # Update every 10s or if first time
+                # We force update for feedback
+                
+                with viz_output:
+                    clear_output(wait=True)
+                    
+                    print(f"Visualization Update: {n_frags} fragments found.")
+                    
+                    view = py3Dmol.view(width=800, height=600)
+                    
+                    # A. Receptor
+                    view.addModel(open(receptor_filename, 'r').read(), "pdb")
+                    view.setStyle({'model': 0}, {}) 
+                    view.addSurface(py3Dmol.SES, {'opacity': 0.3, 'color': 'white'}, {'model': 0})
+                    
+                    # B. Box (Center/Size)
+                    # Convert center/size to min/max
+                    # center is [x, y, z], size is [dx, dy, dz]
+                    b_min = [box_center[i] - box_size[i]/2 for i in range(3)]
+                    b_max = [box_center[i] + box_size[i]/2 for i in range(3)]
+                    
+                    view.addBox({
+                        'center': {'x': box_center[0], 'y': box_center[1], 'z': box_center[2]},
+                        'dimensions': {'w': box_size[0], 'h': box_size[1], 'd': box_size[2]},
+                        'color': 'cyan',
+                        'opacity': 0.5,
+                        'wireframe': True
+                    })
+                    
+                    # C. Fragments (Sample if too many?)
+                    # Loading all might be heavy if thousands. Load last 50?
+                    # or random sample?
+                    # Let's show up to 50 random ones to keep it responsive
+                    import random
+                    viz_frags = fragments
+                    if len(viz_frags) > 50:
+                         viz_frags = random.sample(fragments, 50)
+                         
+                    for frag_file in viz_frags:
+                        frag_path = os.path.join(super_out_dir, frag_file)
+                        try:
+                            view.addModel(open(frag_path, 'r').read(), "pdb")
+                            # Style fragments as sticks, colorful?
+                            # Last added model is -1
+                            view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon'}})
+                        except: pass
+                        
+                    view.zoomTo()
+                    view.show()
+                
+                time.sleep(10)
                 
         viz_thread = threading.Thread(target=viz_monitor)
         viz_thread.start()
@@ -192,12 +242,13 @@ except Exception as e: print(e)
             
             for line in iter(process.stdout.readline, ''):
                 print(line, end='')
+                
             process.wait()
             
             stop_event.set()
             viz_thread.join()
             
-            print("\n✅ Superposer Completed.")
+            print("\nSuperposer Completed.")
             
         except Exception as e:
             stop_event.set()
@@ -257,9 +308,14 @@ except Exception as e: print(e)
 run_btn = widgets.Button(description='Run Pipeline', button_style='danger', icon='rocket')
 run_btn.on_click(run_frankpepstein_pipeline)
 
+
+viz_output = widgets.Output()
+
 display(widgets.VBox([
     widgets.HBox([length_slider, num_peptides_slider]),
     threads_slider,
     run_btn,
-    run_output
+    run_output,
+    viz_output
 ]))
+
