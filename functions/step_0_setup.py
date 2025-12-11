@@ -277,6 +277,46 @@ def setup_external_tools(drive_ids=None):
             notebook_utils.configure_modeller()
         pbar.update(1)
         
+
+    # 3. Verify Executables
+    print(f"\n{'='*20}")
+    print("Verifying Executables...")
+    
+    # Check Click
+    click_bin = os.path.join(utilities_dir, "Click", "bin", "click")
+    if not os.path.exists(click_bin):
+         # Try logic from superposer logic/config
+         click_bin = os.path.join(utilities_dir, "Click", "click")
+         
+    if os.path.exists(click_bin):
+         if os.access(click_bin, os.X_OK):
+             print(f"✅ Click is executable.")
+         else:
+             print(f"⚠️ Click found but NOT executable. Fixing...")
+             subprocess.run(f"chmod +x {click_bin}", shell=True)
+             if os.access(click_bin, os.X_OK):
+                 print(f"✅ Click fixed.")
+             else:
+                 print(f"❌ Failed to fix Click permissions.")
+    else:
+         print(f"❌ Click binary not found at {click_bin}")
+
+    # Check Vina
+    vina_bin = os.path.join(utilities_dir, "vina_1.2.4_linux_x86_64")
+    if os.path.exists(vina_bin):
+         if os.access(vina_bin, os.X_OK):
+             print(f"✅ Vina is executable.")
+         else:
+             print(f"⚠️ Vina found but NOT executable. Fixing...")
+             subprocess.run(f"chmod +x {vina_bin}", shell=True)
+             if os.access(vina_bin, os.X_OK):
+                 print(f"✅ Vina fixed.")
+             else:
+                 print(f"❌ Failed to fix Vina permissions.")
+    else:
+         print(f"❌ Vina binary not found at {vina_bin}")
+    print(f"{'='*20}\n")
+
     clear_output()
     print("✅ Setup Ready!")
 
