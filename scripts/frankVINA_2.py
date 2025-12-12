@@ -193,13 +193,17 @@ def main():
         for file in tqdm(frag_files, total=len(frag_files), desc="Minimizing complexes")
     )
 
+    print("Minimization complete. Ranking results...")
     os.chdir("results_folder")
     scoring_filter()
     os.chdir(frank_folder_init)
+    
+    print("Cleaning up temporary files...")
     run_cmd("rm -r results_folder")
     run_cmd("rm -r temp_folder")
 
     # Convertir a .pdb
+    print("Converting top candidates to PDB...")
     current_dir = os.getcwd()
     top_dir = f"top_{selected_peps}_peps"
     full_path_top = os.path.join(current_dir, top_dir)
@@ -209,6 +213,7 @@ def main():
             if fnmatch.fnmatch(pep_pdbqt, '*.pdbqt'):
                 base = pep_pdbqt.replace(".pdbqt", "")
                 run_cmd(f"{OBABEL_PATH} -ipdbqt {pep_pdbqt} -o pdb -O {base}.pdb ; rm {pep_pdbqt}")
+        print(f"Done! Results in {top_dir}")
     else:
         print(f"No final candidates found in {current_dir}.")
 def main_wrapper():
