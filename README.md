@@ -2,35 +2,125 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Joacaldog/FrankPEPstein/blob/main/FrankPEPstein.ipynb)
 
-**FrankPEPstein** is a tool for designing peptide fragments that bind to specific protein pockets. It integrates `fpocket` for pocket detection, `superposer` for fragment generation, and `FrankVINA` for scoring and ranking.
+**FrankPEPstein** is a structure-guided pipeline for de novo peptide design. It identifies binding pockets on a target receptor, generates candidate peptide fragments using database mining (`superposer`), and ranks them using Vina docking (`FrankVINA`).
 
 ## Pipeline Overview
 
 ```mermaid
 graph TD
-    A[Receptor PDB] -->|Upload| B[fpocket]
-    B --> C{Select Pocket}
-    C -->|Target Pocket PDB| D[Superposer]
-    D -->|Match Fragments| E[Fragment Generation]
-    E -->|Scoring| F[FrankVINA]
-    F --> G[Ranked Fragments]
+    subgraph Step 0: Setup
+    Setup[Install Dependencies & Databases]
+    end
+
+    subgraph Step 1: Pocket Processing
+    Rec[Receptor PDB] -->|Input| Detect{Detection Mode}
+    Detect -->|Auto| Fpocket[fpocket]
+    Detect -->|Manual| Upload[Upload Pocket PDB]
+    Fpocket -->|Selection| Extract[Extract 5Å Shell]
+    Upload -->|Direct| Clean[Rename Chain to 'p']
+    Extract --> Gridbox[Calculate Gridbox (+3Å Buffer)]
+    Clean --> Gridbox
+    end
+
+    subgraph Step 2: Generation
+    Gridbox -->|Coords & Pocket| Super[Superposer]
+    Super -->|Fragments| Vina1[FrankVINA 1 (Scoring)]
+    Vina1 --> Cluster[Patch Clustering]
+    Cluster --> Vina2[FrankVINA 2 (Refinement)]
+    end
+
+    subgraph Step 3: Analysis
+    Vina2 -->|Top Candidates| Seq[Seq Extraction]
+    Seq --> MSA[Multifasta Generation]
+    Seq --> Logo[Sequence Logo Plot]
+    end
+
+    subgraph Step 4: Output
+    Logo --> Zip[Zip Results]
+    MSA --> Zip
+    Zip --> Download[Download .zip]
+    end
 ```
 
-## How to use
+## How to use (Google Colab)
 
-The easiest way to run FrankPEPstein is via Google Colab.
+The primary interface is the interactive [Google Colab Notebook](https://colab.research.google.com/github/Joacaldog/FrankPEPstein/blob/main/FrankPEPstein.ipynb).
 
-1.  Click the **Open In Colab** badge above.
-2.  **Setup Pipeline**: Run the first cell to install dependencies and configure the environment.
-    *   *Note:* You will need to provide Google Drive File IDs for the database and external tools in this step.
-3.  **Upload Receptor**: Upload your target protein structure (PDB format).
-4.  **Select Pocket**: Use the interactive viewer to choose the binding pocket.
-5.  **Run Pipeline**: Execute the subsequent cells to generate and score fragments.
-6.  **Download**: Get your results as a ZIP file.
+### 1. Setup
+Run the first cell. This will:
+*   Install system dependencies (ADFR, etc.).
+*   Install Python packages (`py3Dmol`, `logomaker`, `biopython`).
+*   Download the required databases and tools archive (`files.tar.gz`) from Google Drive.
 
-## Repository Structure
+### 2. Pocket Processing
+*   **Upload Receptor**: Upload your target protein PDB.
+*   **Select Mode**:
+    *   **Auto Detect**: Uses `fpocket` to find potential binding sites. Select one from the dropdown to extract it (residues within 5Å are preserved).
+    *   **Manual Upload**: Upload a pre-defined pocket PDB. It will be used directly to define the gridbox.
+*   **Visualisation**: The receptor (white surface) and selected pocket (colored sphere) are displayed.
+*   **Gridbox**: The script automatically calculates a gridbox centered on the pocket with a **3.0 Å buffer** beyond the pocket atoms.
 
-*   `scripts/`: Python scripts for variable tasks (superposer, scoring, clustering).
-*   `utilities/`: Helper tools (ADFR, Click).
-*   `DB/`: Database files (MiniPockets, Dictionaries).
-*   `FrankPEPstein.ipynb`: Main interactive notebook.
+### 3. Run Generation
+*   **Configure**:
+    *   **Peptide Size**: Length of peptides to generate (e.g., 8-mer).
+    *   **Threads**: CPU cores to use.
+    *   **Candidates**: Number of top peptides to refine in the final step.
+*   **Visualize**: The generated seed fragments appear in real-time in the viewer (green sticks) alongside the receptor and gridbox (red wireframe).
+
+### 4. Analysis
+The pipeline automatically:
+*   Extracts amino acid sequences from the top candidate PDBs.
+*   Aligns them to generate a **Multifasta** file.
+*   Generates a **Sequence Logo** plot showing conserved motifs.
+
+### 5. Download
+Click the download button to get a ZIP file containing:
+*   Top candidate PDB structures.
+*   `candidates.fasta` (Aligned sequences).
+*   `logo.png` (Sequence logo chart).
+
+---
+
+## Local Execution
+
+You can run the pipeline locally using `scripts/run_local.py`.
+
+### Prerequisites
+*   Linux environment.
+*   Python 3.10+.
+*   Databases installed in `DB/` and utilities in `utilities/` (mimicking the repo structure).
+
+### Usage
+
+```bash
+python3 scripts/run_local.py \
+  --receptor my_receptor.pdb \
+  --pocket my_pocket.pdb \
+  --pep_size 8 \
+  --threads 36 \
+  --candidates 10
+```
+
+**What this does:**
+1.  Copies your receptor and pocket to the run directory.
+2.  Standardizes the pocket (renames chain to 'p', saves to `pockets/pocket.pdb`).
+3.  Calculates the Gridbox parameters locally.
+4.  Executes `scripts/run_FrankPEPstein.py` with the correct arguments.
+
+---
+
+## Developer Guide
+
+The codebase is organized to separate Logic from UI.
+
+*   **`functions/`**: Contains the interactive UI code used in the Colab notebook (`step_0`, `step_1`, etc.).
+*   **`scripts/`**: Contains the core logic scripts (`run_FrankPEPstein.py`, `superposer.py`, etc.).
+
+### Updating the Notebook
+If you modify any file in `functions/`:
+1.  Run the generator script:
+    ```bash
+    python3 scripts/generate_notebook.py
+    ```
+2.  This updates `FrankPEPstein.ipynb` automatically.
+3.  Commit both the modified python files and the unified notebook.

@@ -55,7 +55,16 @@ if os.path.exists(state_file):
         pass
 
 receptor_path = pipeline_state.get("receptor_filename", None)
-extracted_pocket_path = pipeline_state.get("extracted_pocket_path", None)
+# extracted_pocket_path = pipeline_state.get("extracted_pocket_path", None)
+# Enforce standard location as per Step 1 refactor
+pockets_dir = os.path.join(initial_path, "pockets")
+standard_pocket_path = os.path.join(pockets_dir, "pocket.pdb")
+
+if os.path.exists(standard_pocket_path):
+    extracted_pocket_path = standard_pocket_path
+else:
+    extracted_pocket_path = pipeline_state.get("extracted_pocket_path", None)
+
 box_center = pipeline_state.get("box_center", None)
 box_size = pipeline_state.get("box_size", None)
 
@@ -87,38 +96,40 @@ def run_pipeline(pep_size, threads, candidates):
     global process_handle
     stop_event.clear()
     
-    # Define Output Paths (based on superposer.py logic usually)
-    # superposer creates 'FrankPEPstein_run' and 'superpockets_residuesAligned3_RMSD0.1' inside
-    # We should ensure we know where it is.
-    
+    # Define Output Paths (for monitoring)
     run_folder_name = "FrankPEPstein_run"
     super_out_name = f"superpockets_residuesAligned3_RMSD0.1"
     output_superposer_path = os.path.join(initial_path, run_folder_name, super_out_name)
     
-    # 1. Superposer
-    log(f"--- Starting Superposer (Peptide Size: {pep_size}) ---")
+    # Construct CLI Command for run_FrankPEPstein.py
+    script_path = os.path.join(repo_folder, "scripts/run_FrankPEPstein.py")
     
-    # Construct command
-    # NOTE: superposer.py uses hardcoded output location usually, we respect that.
-    # We use extracted_pocket_path as -T target
-    
-    # Clean output if exists and requested (Stop button usually handles this, but good to be safe)
-    # But user said "if stop is pressed", so we leave it for now.
-    
-    cmd_superposer = [
-        "python3", f"{repo_folder}/scripts/superposer.py",
-        "-T", extracted_pocket_path,
-        "-d", db_folder,
-        "-r", "0.1",
+    cmd_list = [
+        "python3", script_path,
+        "-w", str(pep_size),
         "-t", str(threads),
-        "-a", "3",
-        "-fm", minipockets_folder
+        "-c", str(candidates)
     ]
     
-    log(f"Running: {' '.join(cmd_superposer)}")
+    # Append Gridbox coordinates from Step 1
+    if box_center and box_size:
+        cmd_list.extend([
+            "-xc", str(box_center[0]),
+            "-yc", str(box_center[1]),
+            "-zc", str(box_center[2]),
+            "-xs", str(box_size[0]),
+            "-ys", str(box_size[1]),
+            "-zs", str(box_size[2])
+        ])
+    else:
+        log("⚠️ Gridbox definition missing in state. Execution will fail.")
+        return
+
+    log(f"--- Starting Pipeline ---")
+    log(f"Command: {' '.join(cmd_list)}")
     
     try:
-        process_handle = subprocess.Popen(cmd_superposer, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=initial_path)
+        process_handle = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=initial_path)
         
         # Monitor Loop
         while True:
@@ -132,83 +143,20 @@ def run_pipeline(pep_size, threads, candidates):
                 # Finished
                 break
                 
-            time.sleep(0.5)
+            # Optional: Read output line by line to show progress in log?
+            # For now, simplistic monitoring.
+            time.sleep(1)
             
         if ret != 0:
             stderr = process_handle.stderr.read()
-            log(f"❌ Superposer failed: {stderr}")
+            log(f"❌ Pipeline failed: {stderr}")
             return
             
-        log("✅ Superposer finished.")
+        log("✅ Pipeline Finished Successfully.")
         
     except Exception as e:
-        log(f"❌ Error executing superposer: {e}")
+        log(f"❌ Error executing pipeline: {e}")
         return
-
-    # 2. FrankVINA 1
-    if stop_event.is_set(): return
-    log("--- Starting FrankVINA 1 ---")
-    
-    if os.path.exists(output_superposer_path):
-        os.chdir(output_superposer_path)
-        # Copy receptor
-        if os.path.exists(receptor_path):
-            os.system(f'cp "{receptor_path}" receptor.pdb')
-        
-        cmd_vina1 = f'python3 {repo_folder}/scripts/frankVINA_1.py "{initial_path}" receptor.pdb {threads}'
-        log(f"Running: {cmd_vina1}")
-        exit_code = os.system(cmd_vina1) # Blocks, but acceptable for this step? Ideally subprocess but os.system used in original
-        
-        if exit_code != 0:
-            log("❌ FrankVINA 1 failed.")
-            os.chdir(initial_path)
-            return
-
-        # Clean
-        os.system("rm * 2> /dev/null") # As per original script logic (careful here!)
-        # Actually original script removes everything? Wait.
-        # Original: os.system("rm * 2> /dev/null") -> This might remove generated files!
-        # Ah, frankVINA_1 likely filters them. Let's trust original logic for now.
-        
-        # 3. Patch Clustering
-        if stop_event.is_set(): 
-            os.chdir(initial_path)
-            return
-
-        log(f"--- Patch Clustering (kmer: {pep_size}) ---")
-        patch_files = [x for x in os.listdir(".") if "patch_file" in x]
-        
-        if len(patch_files) == 0:
-             log("⚠️ No patch files found.")
-        elif len(patch_files) > 1:
-            cmd_cluster = f'python3 {repo_folder}/scripts/patch_clustering.py -w {pep_size} -t {threads}'
-            log(f"Running: {cmd_cluster}")
-            os.system(cmd_cluster)
-            
-            # 4. FrankVINA 2
-            cluster_folder = f"frankPEPstein_{pep_size}"
-            if os.path.exists(cluster_folder):
-                os.chdir(cluster_folder)
-                os.system(f'cp "{receptor_path}" receptor.pdb')
-                
-                log("--- Starting FrankVINA 2 ---")
-                cmd_vina2 = f'python3 {repo_folder}/scripts/frankVINA_2.py "{initial_path}" receptor.pdb {threads} {candidates}'
-                log(f"Running: {cmd_vina2}")
-                os.system(cmd_vina2)
-                
-                os.system("rm * 2> /dev/null")
-            else:
-                log(f"❌ Cluster folder {cluster_folder} not found.")
-
-        elif len(patch_files) == 1:
-             log("Single patch file found, skipping clustering.")
-             # Logic for single file...
-             
-        os.chdir(initial_path)
-        log("🎉 Pipeline Finished.")
-    else:
-        log(f"❌ Output folder {output_superposer_path} not found.")
-        os.chdir(initial_path)
 
 def on_run_click(b):
     out_log.clear_output()

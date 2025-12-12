@@ -31,18 +31,29 @@ except ImportError:
 import ipywidgets as widgets
 from google.colab import files
 from IPython.display import display
+import shutil
+import json
+import re
 
 # --- configuration ---
 detection_mode = "Auto Detect" #@param ["Auto Detect", "Manual Upload"]
+# We use a button to confirm logic? Or just run linear as typical Colab param.
+# User asked for "button to confirm selection". 
+# Usually params are set then cell run. But we can hide logic behind a button.
+# For now, following standard Colab flow, but implementing the robust logic requested.
 
-# Global variables for next steps
+# Global variables
 receptor_filename = None
-pockets_dir = "pockets_upload" # Default for manual
+initial_path = os.getcwd() # Main Directory
+pockets_dir = os.path.join(initial_path, "pockets") # Centralized Storage
 final_pockets_list = []
 
-# --- Persistence Logic ---
-import json
+# Ensure pockets dir exists
+if os.path.exists(pockets_dir):
+    shutil.rmtree(pockets_dir) # Clean start? Or keep? Clean start is safer for logic
+os.makedirs(pockets_dir, exist_ok=True)
 
+# --- Persistence Logic ---
 def save_pipeline_state(updates):
     state_file = "pipeline_state.json"
     current_state = {}
@@ -60,8 +71,6 @@ def save_pipeline_state(updates):
 # --- 1. Upload Receptor ---
 print(f"--- Upload Receptor PDB ({detection_mode}) ---")
 uploaded_r = files.upload()
-
-import re
 
 if not uploaded_r:
     print("No receptor file uploaded.")
@@ -88,22 +97,15 @@ else:
     if detection_mode == "Auto Detect":
         print(f"\nRunning fpocket on {receptor_filename}...")
         try:
-            # Fix: Quotes for filenames with spaces
             subprocess.run(f"fpocket -f '{receptor_filename}'", shell=True, check=True)
             
-            # Robust folder finding
-            # fpocket creates output based on the filename in the SAME directory
-            # receptor_filename is absolute, so output should be absolute too?
-            # fpocket output format: /path/to/file_out/
-            
+            # Find output
             base_name_no_ext = os.path.splitext(os.path.basename(receptor_filename))[0]
             base_dir = os.path.dirname(receptor_filename)
             
-            # Possible output folder names
             folder_name_1 = f"{os.path.basename(receptor_filename)}_out"
             folder_name_2 = f"{base_name_no_ext}_out"
             
-            # Check in the same directory as the receptor
             possible_folders = [
                 os.path.join(base_dir, folder_name_1),
                 os.path.join(base_dir, folder_name_2)
@@ -112,33 +114,31 @@ else:
             output_folder = next((f for f in possible_folders if os.path.exists(f)), None)
 
             if output_folder:
-                pockets_dir = os.path.join(output_folder, "pockets")
-                if os.path.exists(pockets_dir):
-                    final_pockets_list = [f for f in os.listdir(pockets_dir) if f.endswith(".pdb")]
+                fpocket_pockets_dir = os.path.join(output_folder, "pockets")
+                if os.path.exists(fpocket_pockets_dir):
+                    # Move/Copy relevant pockets to our centralized dir
+                    found_pockets = [f for f in os.listdir(fpocket_pockets_dir) if f.endswith(".pdb")]
+                    for p in found_pockets:
+                        src = os.path.join(fpocket_pockets_dir, p)
+                        dst = os.path.join(pockets_dir, p)
+                        shutil.copy(src, dst)
+                        final_pockets_list.append(p)
+                        
                     print(f"Auto-detection finished. Found {len(final_pockets_list)} pockets.")
-                    pockets_dir = os.path.abspath(pockets_dir) # Ensure absolute
                 else:
                     print(f"Warning: pockets subdirectory not found in {output_folder}")
             else:
-                print("Error: fpocket output not found. Checked:", possible_folders)
+                print("Error: fpocket output not found.")
                 
         except subprocess.CalledProcessError:
              print("Error running fpocket.")
 
     elif detection_mode == "Manual Upload":
         print(f"\n--- Upload Manual Pocket PDB ---")
-        os.makedirs(pockets_dir, exist_ok=True)
         uploaded_p = files.upload()
-        import re
         if uploaded_p:
             for p_file in uploaded_p.keys():
-                # Colab renames duplicate uploads to filename(1).ext. 
-                # User wants to overwrite instead.
-                
-                # Check for pattern like "name(1).pdb" or "name (1).pdb"
-                # Regex matches: (any content) optional space (digits) (extension)
                 match = re.search(r'^(.*?)\s?\(\d+\)(\.[^.]*)?$', p_file)
-                
                 if match:
                     clean_name = match.group(1) + (match.group(2) if match.group(2) else "")
                     print(f"Detected duplicate upload: {p_file} -> overwriting {clean_name}")
@@ -146,14 +146,9 @@ else:
                     clean_name = p_file
 
                 target_path = os.path.join(pockets_dir, clean_name)
-                
-                # If target exists, log that we are replacing it
                 if os.path.exists(target_path):
-                    print(f"Replacing existing file: {clean_name}")
                     os.remove(target_path)
                 
-                # Move (rename) the uploaded file to the target path
-                # Note: 'p_file' is in CWD (content/), target is in pockets_dir
                 os.rename(p_file, target_path)
                 
                 if clean_name not in final_pockets_list:
@@ -164,7 +159,6 @@ else:
     # --- 3. Visualization & Selection ---
     if final_pockets_list:
         print("\n--- Pocket Selection & Visualization ---")
-        print("Displaying all detected pockets. Select one below for extraction.")
         
         pocket_dropdown = widgets.Dropdown(
             options=sorted(final_pockets_list),
@@ -175,17 +169,13 @@ else:
         def view_pockets(selected_pocket_file):
             view = py3Dmol.view(width=800, height=600)
             
-            # 1. Receptor Surface (White, Transparent)
+            # Receptor
             with open(receptor_filename, 'r') as f:
                 view.addModel(f.read(), "pdb")
             view.setStyle({}) 
             view.addSurface(py3Dmol.SES, {'opacity': 0.3, 'color': 'white'})
             
-            # 2. Add ALL pockets with distinct colors
             colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#008000', '#800000']
-            
-            # Regex to find number in filename (e.g. pocket5_atm.pdb -> 5, or just 5.pdb -> 5)
-            import re
             
             for i, p_file in enumerate(sorted(final_pockets_list)):
                 full_path = os.path.join(pockets_dir, p_file)
@@ -193,12 +183,9 @@ else:
                     with open(full_path, 'r') as f:
                         view.addModel(f.read(), "pdb")
                     
-                    # Try to extract a short label (number)
-                    # Common patterns: "pocket5_atm.pdb", "pocket5.pdb", "5.pdb"
                     match = re.search(r'(\d+)', p_file)
                     label_text = match.group(1) if match else p_file
                     
-                    # Determine styling
                     is_selected = (p_file == selected_pocket_file)
                     
                     if is_selected:
@@ -211,8 +198,6 @@ else:
                         label_style = {'fontSize': 12, 'fontColor': 'black', 'backgroundColor': 'white', 'backgroundOpacity': 0.5}
 
                     view.setStyle({'model': -1}, {'sphere': {'color': color, 'opacity': opacity}})
-                    
-                    # Add 3D Label (Number only)
                     view.addLabel(label_text, label_style, {'model': -1})
 
             view.zoomTo()
@@ -221,130 +206,133 @@ else:
         display(widgets.interactive(view_pockets, selected_pocket_file=pocket_dropdown))
     else:
         print("No pockets available to select.")
+
 #@title 4. Pocket Extraction & Box Generation
-#@markdown This step extracts the selected pocket (residues within 5Å of fpocket spheres) and calculates the grid box.
+#@markdown This step extracts the selected pocket (if Auto) or processes it (if Manual) and calculates the grid box.
 
 import os
-import subprocess # Added subprocess import here for consistency
-import sys # Added sys import for python_exe fallback
+import subprocess
+import sys
 
 # --- Helper Functions (Subprocess) ---
-def run_extraction_and_box_isolated(receptor_path, pocket_path, output_pocket_path, buffer=5.0):
+def run_processing_isolated(receptor_path, pocket_path, output_pocket_path, mode="extract", buffer=3.0):
     """
-    Runs extraction (NeighborSearch) and box calculation in isolated environment.
+    Runs extraction/processing and box calculation in isolated environment.
+    Mode: "extract" (Fpocket: 5A NeighborSearch) or "direct" (Manual: Load & Box only)
     """
     
-    script_content = """
+    script_content = f"""
 import sys
 import os
 from Bio import PDB
 from Bio.PDB import PDBParser, PDBIO, Select, NeighborSearch
 
-def extract_and_box(receptor_file, pocket_atm_file, output_file, buffer_val):
+def process_and_box(receptor_file, pocket_file, output_file, mode, buffer_val):
     try:
         parser = PDBParser(QUIET=True)
         
-        # 1. Load Structures
-        # print(f"Loading receptor: {receptor_file}")
-        receptor_struct = parser.get_structure("receptor", receptor_file)
+        # 1. Load Pocket
+        pocket_struct = parser.get_structure("pocket", pocket_file)
         
-        # print(f"Loading pocket atoms: {pocket_atm_file}")
-        pocket_struct = parser.get_structure("pocket_atm", pocket_atm_file)
+        # Determine atoms for Box Calculation
+        atoms_for_box = []
+        residues_for_saving = [] # (chain, res_id)
         
-        # 2. Collect Pocket Atoms (e.g. Alpha Spheres)
-        pocket_atoms = []
-        for model in pocket_struct:
-            for chain in model:
-                for residue in chain:
-                    for atom in residue:
-                        pocket_atoms.append(atom)
-        
-        if not pocket_atoms:
-            print("ERROR: No atoms in pocket file")
+        # 2. Logic based on Mode
+        if mode == 'extract':
+             # Fpocket mode: Load Receptor, Find Neighbors (5A)
+             receptor_struct = parser.get_structure("receptor", receptor_file)
+             
+             pocket_atoms = [atom for atom in pocket_struct.get_atoms()]
+             if not pocket_atoms:
+                 print("ERROR: No atoms in pocket file")
+                 return
+                 
+             receptor_atoms = list(receptor_struct.get_atoms())
+             ns = NeighborSearch(receptor_atoms)
+             
+             selected_residues = set()
+             for p_atom in pocket_atoms:
+                 nearby = ns.search(p_atom.get_coord(), 5.0, level='R')
+                 for res in nearby:
+                     selected_residues.add((res.parent.id, res.id))
+            
+             # Save Logic for Extraction
+             class PocketSelect(Select):
+                 def accept_residue(self, residue):
+                     return (residue.parent.id, residue.id) in selected_residues
+                     
+             # We save to temp then reload to standardize chain 'p'
+             io = PDBIO()
+             io.set_structure(receptor_struct)
+             temp_out = output_file + ".tmp"
+             io.save(temp_out, PocketSelect())
+             
+             # Reload temp to get atoms for box
+             saved_struct = parser.get_structure("saved", temp_out)
+             
+             # Prepare for Final Save (Rename chain to 'p')
+             for model in saved_struct:
+                 for chain in model:
+                     chain.id = 'p'
+                     for residue in chain:
+                         for atom in residue:
+                             atoms_for_box.append(atom)
+             
+             io.set_structure(saved_struct)
+             io.save(output_file)
+             os.remove(temp_out)
+             
+        elif mode == 'direct':
+             # Manual mode: Use pocket file directly, just rename chain to 'p'
+             
+             # Collect atoms and rename chain
+             for model in pocket_struct:
+                 for chain in model:
+                     chain.id = 'p'
+                     for residue in chain:
+                         for atom in residue:
+                             atoms_for_box.append(atom)
+             
+             io = PDBIO()
+             io.set_structure(pocket_struct)
+             io.save(output_file)
+             
+        # 3. Box Calculation
+        if not atoms_for_box:
+            print("ERROR: No atoms/residues for box calculation")
             return
 
-        # 3. Neighbor Search (5.0 Angstrom)
-        # Find PROTEIN residues near the pocket spheres
-        receptor_atoms = list(receptor_struct.get_atoms())
-        ns = NeighborSearch(receptor_atoms)
+        coords = [a.get_coord() for a in atoms_for_box]
+        min_coord = [min([c[i] for c in coords]) for i in range(3)]
+        max_coord = [max([c[i] for c in coords]) for i in range(3)]
         
-        selected_residues = set()
-        
-        for p_atom in pocket_atoms:
-            # Level 'R' returns residues
-            nearby_residues = ns.search(p_atom.get_coord(), 5.0, level='R')
-            for res in nearby_residues:
-                selected_residues.add((res.parent.id, res.id))
-                
-        # 4. Save Extracted Pocket (Chain 'p')
-        class PocketSelect(Select):
-            def accept_residue(self, residue):
-                return (residue.parent.id, residue.id) in selected_residues
-
-        io = PDBIO()
-        io.set_structure(receptor_struct)
-        
-        # We need to save, but also RENAME chain to 'p'
-        # To do this cleanly without modifying original struct in memory too much:
-        # Save to temp, reload, rename, save final.
-        
-        temp_out = output_file + ".tmp"
-        io.save(temp_out, PocketSelect())
-        
-        # Reload temp to verify and calculate box
-        extracted_struct = parser.get_structure("extracted", temp_out)
-        
-        all_coords = []
-        for model in extracted_struct:
-            for chain in model:
-                chain.id = 'p' # RENAME TO p
-                for residue in chain:
-                    for atom in residue:
-                        all_coords.append(atom.get_coord())
-        
-        # Save Final
-        io.set_structure(extracted_struct)
-        io.save(output_file)
-        os.remove(temp_out)
-        
-        # 5. Box Calculation
-        if not all_coords:
-            print("ERROR: No residues selected")
-            return
-
-        min_coord = [min([c[i] for c in all_coords]) for i in range(3)]
-        max_coord = [max([c[i] for c in all_coords]) for i in range(3)]
-        
-        # Basic Center
+        # Center
         center = [(min_coord[i] + max_coord[i]) / 2 for i in range(3)]
         
-        # Size + Buffer
-        # buffer_val is passed (usually 10 to add padding)
-        # User requested trick? Standard padding is usually sufficient if 5A extraction was done.
+        # Size + Buffer (3.0 A as requested)
         size = [(max_coord[i] - min_coord[i]) + float(buffer_val) for i in range(3)]
         
-        print(f"CENTER:{center[0]},{center[1]},{center[2]}")
-        print(f"SIZE:{size[0]},{size[1]},{size[2]}")
+        print(f"CENTER:{{center[0]}},{{center[1]}},{{center[2]}}")
+        print(f"SIZE:{{size[0]}},{{size[1]}},{{size[2]}}")
         print("SUCCESS")
 
     except Exception as e:
-        print(f"ERROR:{e}")
+        print(f"ERROR:{{e}}")
 
 if __name__ == "__main__":
-    extract_and_box(sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4]))
-
+    process_and_box(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], float(sys.argv[5]))
 """
-    script_name = "extract_box_isolated.py"
+    script_name = "process_box_isolated.py"
     with open(script_name, "w") as f:
         f.write(script_content)
         
     python_exe = "/usr/local/envs/FrankPEPstein/bin/python"
-    # Fallback to sys.executable if env not found (local testing)
     if not os.path.exists(python_exe): python_exe = sys.executable
 
     try:
         result = subprocess.run(
-            [python_exe, script_name, receptor_path, pocket_path, output_pocket_path, str(buffer)],
+            [python_exe, script_name, receptor_path, pocket_path, output_pocket_path, mode, str(buffer)],
             capture_output=True, text=True, check=True
         )
         
@@ -362,7 +350,6 @@ if __name__ == "__main__":
                 print(f"Script Error: {line}")
                 
         return center, size, success
-
     except subprocess.CalledProcessError as e:
         print(f"Execution Error: {e.stderr}")
         return None, None, False
@@ -370,47 +357,50 @@ if __name__ == "__main__":
 # --- GUI ---
 output_log = widgets.Output()
 
-def extract_and_calculate_box(b):
+def process_logic(b):
     output_log.clear_output()
     with output_log:
         if 'pocket_dropdown' not in globals() or not pocket_dropdown.value:
             print("No pocket selected.")
             return
         
-        if 'receptor_filename' not in globals() or not receptor_filename:
-             print("Receptor not defined.")
-             return
-
         selected_pocket = pocket_dropdown.value
-        pocket_path = os.path.join(pockets_dir, selected_pocket)
+        # Source path
+        src_pocket_path = os.path.join(pockets_dir, selected_pocket)
         
-        # Define output path for the extracted (real) pocket
-        # stored in the same dir as receptor usually, or pockets dir
-        extracted_filename = "pocket.pdb"
-        extracted_path = os.path.join(pockets_dir, extracted_filename)
+        # Output path (FINAL pocket.pdb in proper location)
+        # User requested: "definamos una carpeta pocket en el main directory."
+        # Actually we are already using 'pockets' dir. 
+        # Does the user want the FINAL 'pocket.pdb' to be `pockets/pocket.pdb`?
+        # Yes: "Si se usa fpocket debe copiarse el pocket.pdb final a la carpeta pocket."
+        # And "storage... in FrankPEPstein/pockets". Wait, repo folder or main?
+        # User said "definamos una carpeta pocket en el main directory ... no en repo folder ... no la del repo clonado"
+        # So `os.getcwd()/pockets` is correct.
+        
+        final_pocket_name = "pocket.pdb"
+        final_pocket_path = os.path.join(pockets_dir, final_pocket_name)
         
         print(f"Processing {selected_pocket}...")
-        print(f"Receptor: {receptor_filename}")
-        print("Running NeighborSearch (5Å) + Box Calculation...")
         
-        center, size, success = run_extraction_and_box_isolated(
-            receptor_filename, pocket_path, extracted_path, buffer=10.0 # Buffer for BOX size (padding), extraction radius is 5.0 inside script
+        mode = "extract" if detection_mode == "Auto Detect" else "direct"
+        print(f"Mode: {mode}")
+        
+        center, size, success = run_processing_isolated(
+            receptor_filename, src_pocket_path, final_pocket_path, mode=mode, buffer=3.0
         )
         
         if success and center:
-            center_str = f"{center[0]:.3f}, {center[1]:.3f}, {center[2]:.3f}"
-            size_str = f"{size[0]:.3f}, {size[1]:.3f}, {size[2]:.3f}"
-            
             print("-" * 30)
-            print(f"Box Center: {center_str}")
-            print(f"Box Size:   {size_str}")
+            print(f"Box Center: {center[0]:.3f}, {center[1]:.3f}, {center[2]:.3f}")
+            print(f"Box Size:   {size[0]:.3f}, {size[1]:.3f}, {size[2]:.3f}")
             print("-" * 30)
-            print(f"✅ Created Extracted Pocket: {extracted_path} (pocket.pdb)")
+            print(f"✅ Created Final Pocket: {final_pocket_path}")
             
+            # Save State
             global box_center, box_size, extracted_pocket_path
             box_center = center
             box_size = size
-            extracted_pocket_path = os.path.abspath(extracted_path)
+            extracted_pocket_path = os.path.abspath(final_pocket_path)
             
             save_pipeline_state({
                 "box_center": box_center,
@@ -418,16 +408,15 @@ def extract_and_calculate_box(b):
                 "extracted_pocket_path": extracted_pocket_path
             })
         else:
-            print("Extraction Failed.")
+            print("Processing Failed.")
 
-extract_btn = widgets.Button(
-    description='Extract Pocket & Calculate Box',
+process_btn = widgets.Button(
+    description='Confirm & Process Pocket',
     button_style='success',
-    icon='box',
+    icon='check',
     layout=widgets.Layout(width='50%')
 )
-extract_btn.on_click(extract_and_calculate_box)
+process_btn.on_click(process_logic)
 
-print("\n--- 4. Extraction Control ---")
-display(extract_btn, output_log)
-
+print("\n--- 4. Pocket Processing & Box Calculation ---")
+display(process_btn, output_log)

@@ -42,6 +42,9 @@ def run_setup():
                 condacolab.check()
         except (ImportError, AssertionError):
             print("Installing CondaColab... (Kernel will restart and colab will say it crashes, you dont need to do anything)")
+            print("Installing python dependencies...")
+            subprocess.run("pip install -q py3dmol logomaker", shell=True, check=True)
+            subprocess.run("pip install -q biopython", shell=True, check=True) # Ensure biopython is there too
             with SuppressStdout():
                 subprocess.run("pip install -q condacolab", shell=True, check=True)
                 import condacolab
