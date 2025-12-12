@@ -88,6 +88,12 @@ def main():
     print(f"Processing pocket to {dest_processed_pocket}...")
     center, size = calculate_box_and_save(dest_initial_pocket, dest_processed_pocket)
     
+    # User Requirement: The pocket in the root should also be 'p'
+    # Overwrite the initial copy with the processed one
+    if center and size:
+        print(f"Updating {dest_initial_pocket} with processed chain 'p'...")
+        shutil.copy(dest_processed_pocket, dest_initial_pocket)
+    
     if not center or not size:
         print("Failed to process pocket.")
         sys.exit(1)

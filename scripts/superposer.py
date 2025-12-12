@@ -122,7 +122,10 @@ def run_click(file):
             # print(folder.split("_")[0], working_directory)
             if folder.split("_")[0] not in working_directory:
                 peptide_chain = folder.split("_")[-1]
-                Faufile_noExtension = fau_file.replace(".pdb", "")
+                # FIX: Use basename to ensure we point to the local copy in temp_folder
+                fau_filename = os.path.basename(fau_file)
+                Faufile_noExtension = fau_filename.replace(".pdb", "")
+                
                 file_noExtension = file.replace(".pdb", "")
                 patch = file_noExtension.split("_")[-1].split("-")
                 patch_length = len(patch)

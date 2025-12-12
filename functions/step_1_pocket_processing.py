@@ -432,6 +432,14 @@ def process_logic(b):
                 "box_size": box_size,
                 "extracted_pocket_path": extracted_pocket_path
             })
+            
+            # Copy to Root for user visibility (matches run_local behavior)
+            root_pocket = os.path.join(initial_path, "pocket.pdb")
+            try:
+                shutil.copy(final_pocket_path, root_pocket)
+                print(f"✅ Copied to Root: {root_pocket}")
+            except Exception as e:
+                print(f"Warning: Could not copy to root: {e}")
         else:
             print("Processing Failed.")
 
