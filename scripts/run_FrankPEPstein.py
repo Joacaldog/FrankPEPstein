@@ -56,6 +56,7 @@ def main():
     # superposer.py expects: -x_center ... -x_size ...
     superposer_cmd_list = [
         sys.executable, f"{repo_folder}/scripts/superposer.py",
+        "-i", initial_path,
         "-T", pocket_pdb,
         "-d", db_folder,
         "-t", str(threads),

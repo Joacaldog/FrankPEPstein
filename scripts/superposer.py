@@ -15,18 +15,13 @@ import numpy as np
 import argparse
 
 # Configuration Variables
-# Configuration Variables
-# Assuming running from main dir where utilities/ exists
-PARAMETERS_INP_PATH = os.path.abspath("utilities/Parameters.inp")
-CLICK_PATH = os.path.abspath("utilities/click/click") if os.path.exists("utilities/click/click") else os.path.abspath("utilities/click")
-# Checking for the executable specifically
-if not os.path.exists(CLICK_PATH):
-    # Fallback to try finding it if nested differently (e.g. utilities/bin/click)
-    # But usually it's utilities/click or utilities/click/click
-    pass
+# Configuration Variables will be set after arg parsing
 
 program_description = "Select and generate fragment of peptides that could eventually bind to target receptor based on minipocket alignments"
 parser = argparse.ArgumentParser(description=program_description)
+parser.add_argument("-i", "--initial_path", type=str,
+                    help="Absolute path to the main directory (containing DB, utilities, etc.)", required=True)
+
 parser.add_argument("-T", "--target_receptor", type=str,
                     help="target receptor to be scanned for posibles fragments of peptides to bind, MUST be on the same folder", required=True)
 parser.add_argument("-d", "--pepbdb_folder", type=str,
@@ -52,6 +47,23 @@ parser.add_argument("-fm", "--folder_minipockets", type=str,
                     help="folder containing minipockets", required=True)
 
 args = parser.parse_args()
+
+# --- Path Configuration using explicit initial_path ---
+initial_path = args.initial_path
+
+# 1. Click & Parameters.inp (Main utilities folder -> utilities/click)
+# Both binaries and config are in the same folder as verified.
+CLICK_DIR = os.path.join(initial_path, "utilities/click")
+CLICK_PATH = os.path.join(CLICK_DIR, "click")
+if not os.path.exists(CLICK_PATH):
+     # Fallback if just in case
+     CLICK_PATH = os.path.join(initial_path, "utilities/click")
+
+PARAMETERS_INP_PATH = os.path.join(CLICK_DIR, "Parameters.inp")
+
+print(f"DEBUG: Using CLICK_PATH={CLICK_PATH}")
+print(f"DEBUG: Using PARAMETERS_INP_PATH={PARAMETERS_INP_PATH}")
+
 fau_file = args.target_receptor
 pepbdb_folder = args.pepbdb_folder
 cutoff = 3
