@@ -34,10 +34,8 @@ db_folder = os.path.join(initial_path, "DB/filtered_DB_P5-15_R30_id10")
 # Executables permission fix
 def fix_permissions():
     executables = [
-        f"{repo_folder}/utilities/click",
         f"{repo_folder}/utilities/vina_1.2.4_linux_x86_64",
-        f"{initial_path}/utilities/click", # Just in case it's here
-        f"{initial_path}/utilities/vina_1.2.4_linux_x86_64"
+        f"{initial_path}/utilities/click/click"
     ]
     for exe in executables:
         if os.path.exists(exe):
