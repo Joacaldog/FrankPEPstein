@@ -58,7 +58,8 @@ def create_notebook():
             "cell_type": "code",
             "execution_count": None,
             "metadata": {
-                "id": os.path.basename(script_path).replace(".py", "") 
+                "id": os.path.basename(script_path).replace(".py", ""),
+                "cellView": "form"
             },
             "outputs": [],
             "source": content.splitlines(keepends=True)
