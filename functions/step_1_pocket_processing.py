@@ -94,12 +94,36 @@ else:
     save_pipeline_state({"receptor_filename": receptor_filename})
 
     # --- 2. Pocket Handling ---
+
+    # Determine fpocket path
+    fpocket_bin = "fpocket"
+    if shutil.which(fpocket_bin) is None:
+        # Try specific env path
+        env_fpocket = "/usr/local/envs/FrankPEPstein/bin/fpocket"
+        if os.path.exists(env_fpocket):
+            fpocket_bin = env_fpocket
+        else:
+            print("⚠️ fpocket executable not found in PATH or FrankPEPstein env.")
+            # We let it fail in subprocess if still not found, but this warning helps.
+
     if detection_mode == "Auto Detect":
-        print(f"\nRunning fpocket on {receptor_filename}...")
         try:
-            subprocess.run(f"fpocket -f '{receptor_filename}'", shell=True, check=True)
+            print(f"Running fpocket on {receptor_filename} using {fpocket_bin}...")
+            # Capture output for debugging
+            result = subprocess.run(f"{fpocket_bin} -f '{receptor_filename}'", shell=True, capture_output=True, text=True)
+
             
-            # Find output
+            if result.returncode != 0:
+                print("❌ Error running fpocket.")
+                print(f"Exit Code: {result.returncode}")
+                print(f"STDERR:\n{result.stderr}")
+                print(f"STDOUT:\n{result.stdout}")
+                # We can try to look at why.
+            else:
+                # Success logic
+                pass 
+                
+            # Check for output ONLY if successful or to diagnose
             base_name_no_ext = os.path.splitext(os.path.basename(receptor_filename))[0]
             base_dir = os.path.dirname(receptor_filename)
             
@@ -128,10 +152,11 @@ else:
                 else:
                     print(f"Warning: pockets subdirectory not found in {output_folder}")
             else:
-                print("Error: fpocket output not found.")
+                 if result.returncode == 0:
+                     print("Error: fpocket finished but output folder not found.")
                 
-        except subprocess.CalledProcessError:
-             print("Error running fpocket.")
+        except Exception as e:
+             print(f"Unexpected error running fpocket: {e}")
 
     elif detection_mode == "Manual Upload":
         print(f"\n--- Upload Manual Pocket PDB ---")

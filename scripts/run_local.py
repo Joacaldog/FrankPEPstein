@@ -98,7 +98,7 @@ def main():
     
     # 3. Execution
     cmd = [
-        "python3", run_script,
+        sys.executable, run_script,
         "-w", str(args.pep_size),
         "-t", str(args.threads),
         "-c", str(args.candidates),

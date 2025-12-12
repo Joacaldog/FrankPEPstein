@@ -105,7 +105,7 @@ def run_pipeline(pep_size, threads, candidates):
     script_path = os.path.join(repo_folder, "scripts/run_FrankPEPstein.py")
     
     cmd_list = [
-        "python3", script_path,
+        sys.executable, script_path,
         "-w", str(pep_size),
         "-t", str(threads),
         "-c", str(candidates)

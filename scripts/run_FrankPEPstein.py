@@ -49,7 +49,7 @@ def main():
     # Construct superposer command with explicit gridbox args
     # superposer.py expects: -x_center ... -x_size ...
     superposer_cmd_list = [
-        "python3", f"{repo_folder}/scripts/superposer.py",
+        sys.executable, f"{repo_folder}/scripts/superposer.py",
         "-T", pocket_pdb,
         "-d", db_folder,
         "-r", "0.1",
@@ -78,7 +78,7 @@ def main():
         os.system(f'cp {initial_path}/receptor.pdb .')
         
         print(f"--- Running FrankVINA 1 ---")
-        cmd_vina1 = f'python3 {repo_folder}/scripts/frankVINA_1.py {initial_path} receptor.pdb {threads}'
+        cmd_vina1 = f'{sys.executable} {repo_folder}/scripts/frankVINA_1.py {initial_path} receptor.pdb {threads}'
         print(f"CMD: {cmd_vina1}")
         os.system(cmd_vina1)
         
@@ -92,7 +92,7 @@ def main():
             print("No patch files in folder")
         elif len(patch_files) > 1:
             print(f"Running patch_clustering with kmer: {pep_size} ")
-            os.system(f'python3 {repo_folder}/scripts/patch_clustering.py -w {pep_size} -t {threads}')
+            os.system(f'{sys.executable} {repo_folder}/scripts/patch_clustering.py -w {pep_size} -t {threads}')
             
             cluster_dir = f"frankPEPstein_{pep_size}"
             if os.path.exists(cluster_dir):
@@ -100,7 +100,7 @@ def main():
                 os.system(f'cp {initial_path}/receptor.pdb .')
                 
                 print(f"--- Running FrankVINA 2 ---")
-                cmd_vina2 = f'python3 {repo_folder}/scripts/frankVINA_2.py {initial_path} receptor.pdb {threads} {candidates_number}'
+                cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} receptor.pdb {threads} {candidates_number}'
                 print(f"CMD: {cmd_vina2}")
                 os.system(cmd_vina2)
                 
