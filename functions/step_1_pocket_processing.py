@@ -37,11 +37,7 @@ import re
 
 # --- configuration ---
 detection_mode = "Auto Detect" #@param ["Auto Detect", "Manual Upload"]
-min_alpha_spheres = 50 #@param {type:"integer"}
-# We use a button to confirm logic? Or just run linear as typical Colab param.
-# User asked for "button to confirm selection". 
-# Usually params are set then cell run. But we can hide logic behind a button.
-# For now, following standard Colab flow, but implementing the robust logic requested.
+min_alpha_spheres = 35 #@param {type:"integer"}
 
 # Global variables
 receptor_filename = None
@@ -111,8 +107,8 @@ else:
         try:
             print(f"Running fpocket on {receptor_filename} using {fpocket_bin} with min alpha spheres={min_alpha_spheres}...")
             # Capture output for debugging
-            # Using -m to filter small pockets as requested
-            result = subprocess.run(f"{fpocket_bin} -f '{receptor_filename}' -m {min_alpha_spheres}", shell=True, capture_output=True, text=True)
+            # Using -m to filter small pockets as requested - REMOVED due to user report of bugs
+            result = subprocess.run(f"{fpocket_bin} -f '{receptor_filename}'", shell=True, capture_output=True, text=True)
 
             
             if result.returncode != 0:
@@ -151,6 +147,8 @@ else:
                         final_pockets_list.append(p)
                         
                     print(f"Auto-detection finished. Found {len(final_pockets_list)} pockets.")
+                    if not final_pockets_list:
+                        print(f"⚠️ No pockets found! Try lowering min_alpha_spheres (current: {min_alpha_spheres})")
                 else:
                     print(f"Warning: pockets subdirectory not found in {output_folder}")
             else:

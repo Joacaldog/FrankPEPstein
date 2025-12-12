@@ -78,9 +78,11 @@ w_candidates = widgets.IntText(value=10, description='Candidates:', style=style)
 
 btn_run = widgets.Button(description='Run Generation', button_style='success', icon='play')
 btn_stop = widgets.Button(description='Stop & Reset', button_style='danger', icon='stop')
+btn_refresh = widgets.Button(description='Refresh Viz', button_style='info', icon='refresh')
 
-out_log = widgets.Output(layout={'border': '1px solid black', 'height': '200px', 'overflow_y': 'scroll'})
-out_vis = widgets.Output()
+out_log = widgets.Output(layout={'border': '1px solid #ccc', 'height': '150px', 'overflow_y': 'scroll', 'margin': '10px 0'})
+# Viz Output with explicit size and border to show user where it is
+out_vis = widgets.Output(layout={'border': '2px solid #4CAF50', 'height': '600px', 'margin': '10px 0'})
 
 # --- Progress Widgets ---
 prog_style = {'description_width': 'initial'}
@@ -228,6 +230,7 @@ def run_pipeline(pep_size, threads, candidates):
 def on_run_click(b):
     out_log.clear_output()
     out_vis.clear_output()
+    
     btn_run.disabled = True
     
     # Start Visualization Thread
@@ -260,8 +263,40 @@ def on_stop_click(b):
         
     btn_run.disabled = False
     log("Stopped and Reset.")
+
+def on_refresh_click(b):
+    # Manual trigger for visualization refresh
+    # Only if pipeline running or finished
+    log("Manually refreshing visualization...")
+    
+    # We can just clear and re-draw static view here if needed,
+    # or rely on viz_loop to catch up? 
+    # Viz loop is continuous. 
+    # Let's just force a redraw in this thread.
+    with out_vis:
+        out_vis.clear_output(wait=True)
+        view = py3Dmol.view(width=800, height=600)
+        
+        if receptor_path and os.path.exists(receptor_path):
+            with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
+            view.setStyle({'model': -1}, {})
+            view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+            
+        if extracted_pocket_path and os.path.exists(extracted_pocket_path):
+             with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+             view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
+             
+        if box_center and box_size:
+             cx, cy, cz = box_center; sx, sy, sz = box_size
+             view.addBox({'center': {'x': cx, 'y': cy, 'z': cz},'dimensions': {'w': sx, 'h': sy, 'd': sz},'color': 'red','opacity': 0.5})
+             
+        view.zoomTo()
+        display(view)
+
+
 btn_run.on_click(on_run_click)
 btn_stop.on_click(on_stop_click)
+btn_refresh.on_click(on_refresh_click)
 
 # --- Visualization Logic ---
 def viz_loop():
@@ -378,10 +413,10 @@ def viz_loop():
 # --- Layout ---
 ui = widgets.VBox([
     widgets.HBox([w_pep_size, w_threads, w_candidates]),
-    widgets.HBox([btn_run, btn_stop]),
+    widgets.HBox([btn_run, btn_stop, btn_refresh]),
     ui_progress,
-    out_log,
-    out_vis
+    out_vis,
+    out_log
 ])
 
 display(ui)
