@@ -41,6 +41,12 @@ def main():
         
     # Output Folders
     run_folder = os.path.join(initial_path, "FrankPEPstein_run")
+    if not os.path.exists(run_folder):
+        os.makedirs(run_folder)
+        
+    # Switch to run_folder for superposer execution
+    os.chdir(run_folder)
+    
     output_superposer_path = os.path.join(run_folder, "superpockets_residuesAligned3_RMSD0.1")
     
     # 1. Superposer

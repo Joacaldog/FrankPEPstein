@@ -164,6 +164,39 @@ def on_run_click(b):
     # Start Visualization Thread
     threading.Thread(target=viz_loop, daemon=True).start()
     
+    # Initial Visualization (Static) - Immediate Feedback
+    with out_vis:
+        out_vis.clear_output(wait=True)
+        view = py3Dmol.view(width=800, height=600)
+        
+        # Receptor
+        if receptor_path and os.path.exists(receptor_path):
+            with open(receptor_path, 'r') as f:
+                view.addModel(f.read(), "pdb")
+            view.setStyle({'model': -1}, {})
+            view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+        
+        # Pocket (Orange)
+        if extracted_pocket_path and os.path.exists(extracted_pocket_path):
+             with open(extracted_pocket_path, 'r') as f:
+                view.addModel(f.read(), "pdb")
+             view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
+        
+        # GridBox (Red)
+        if box_center and box_size:
+             cx, cy, cz = box_center
+             sx, sy, sz = box_size
+             view.addBox({
+                 'center': {'x': cx, 'y': cy, 'z': cz},
+                 'dimensions': {'w': sx, 'h': sy, 'd': sz},
+                 'color': 'red',
+                 'opacity': 0.5
+             })
+             
+        view.zoomTo()
+        view.show()
+        print("Scanning for fragments...")
+        
     # Run Pipeline in Thread
     def target():
         run_pipeline(w_pep_size.value, w_threads.value, w_candidates.value)
