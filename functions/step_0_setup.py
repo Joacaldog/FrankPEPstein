@@ -151,7 +151,8 @@ def setup_external_tools(files_id=None):
              print(f"Renaming {adfr_extracted} to {adfr_target}...")
              os.rename(adfr_extracted, adfr_target)
              
-        if os.path.exists(utilities_dir):
+             
+        # if os.path.exists(utilities_dir): # REMOVED redundant line causing indent error
         print("Fixing permissions...")
         subprocess.run(f"chmod -R +x {utilities_dir}", shell=True)
         
