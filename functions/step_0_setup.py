@@ -115,8 +115,7 @@ def configure_modeller(license_key='MODELIRANJE', repo_dir='FrankPEPstein'):
         return True
     return False
 
-        return True
-    return False
+
 
 def setup_external_tools(files_id=None):
     # Install gdown if needed
@@ -158,7 +157,8 @@ def setup_external_tools(files_id=None):
         # User said "utilities que quedaran en ~/. Ahora ADFR al extraerse queda listo... lo mismo con click"
         # We assume standard structure.
         
-'''
+
+        '''
         os.makedirs("FrankPEPstein/scripts", exist_ok=True)
         with open("FrankPEPstein/scripts/notebook_utils.py", "w") as f:
             f.write(patched_utils_content)
