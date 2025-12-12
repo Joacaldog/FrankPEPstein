@@ -15,8 +15,15 @@ import numpy as np
 import argparse
 
 # Configuration Variables
-PARAMETERS_INP_PATH = "~/FrankPEPstein/utilities/Parameters.inp"
-CLICK_PATH = "~/FrankPEPstein/utilities/click"
+# Configuration Variables
+# Assuming running from main dir where utilities/ exists
+PARAMETERS_INP_PATH = os.path.abspath("utilities/Parameters.inp")
+CLICK_PATH = os.path.abspath("utilities/click/click") if os.path.exists("utilities/click/click") else os.path.abspath("utilities/click")
+# Checking for the executable specifically
+if not os.path.exists(CLICK_PATH):
+    # Fallback to try finding it if nested differently (e.g. utilities/bin/click)
+    # But usually it's utilities/click or utilities/click/click
+    pass
 
 program_description = "Select and generate fragment of peptides that could eventually bind to target receptor based on minipocket alignments"
 parser = argparse.ArgumentParser(description=program_description)

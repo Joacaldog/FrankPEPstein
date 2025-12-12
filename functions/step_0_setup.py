@@ -1,5 +1,5 @@
 
-#@title 0. Install CondaColab & Setup Tools (~2 min)
+#@title 0. Install CondaColab & Setup Tools (~3 min)
 import sys
 import os
 import subprocess
@@ -29,7 +29,7 @@ def run_setup():
         ("Cloning Repository", "git"),
         ("Creating Conda Environment (Slow)", "env"),
         ("Configuring Notebook Utils", "patch"),
-        ("Setting up External Tools (Parallel DB Download)", "tools"),
+        ("Setting up External Tools (DB Download)", "tools"),
         ("Configuring Modeller", "modeller")
     ]
     
@@ -123,7 +123,7 @@ def setup_external_tools(files_id=None):
     except ImportError: subprocess.run([sys.executable, "-m", "pip", "install", "gdown"], check=True); import gdown
 
     # Determine Base Dir
-    base_dir = "FrankPEPstein" if os.path.exists("FrankPEPstein") else "."
+    base_dir = "." # Always download to current directory (root of colab)
     
     # 1. Download Single Archive
     if files_id:
