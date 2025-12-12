@@ -82,7 +82,7 @@ btn_refresh = widgets.Button(description='Refresh Viz', button_style='info', ico
 
 out_log = widgets.Output(layout={'border': '1px solid #ccc', 'height': '150px', 'overflow_y': 'scroll', 'margin': '10px 0'})
 # Viz Output with explicit size and border to show user where it is
-out_vis = widgets.Output(layout={'border': '2px solid #4CAF50', 'height': '600px', 'margin': '10px 0'})
+out_vis = widgets.HTML(layout={'border': '2px solid #4CAF50', 'height': '600px', 'margin': '10px 0', 'width': '100%'})
 
 # --- Progress Widgets ---
 prog_style = {'description_width': 'initial'}
@@ -290,8 +290,9 @@ def on_refresh_click(b):
              cx, cy, cz = box_center; sx, sy, sz = box_size
              view.addBox({'center': {'x': cx, 'y': cy, 'z': cz},'dimensions': {'w': sx, 'h': sy, 'd': sz},'color': 'red','opacity': 0.5})
              
-        view.zoomTo()
-        display(view)
+    view.zoomTo()
+    # Direct HTML update avoids thread context issues
+    out_vis.value = view._make_html()
 
 
 btn_run.on_click(on_run_click)
@@ -312,27 +313,23 @@ def viz_loop():
         
         log("Visualization monitoring started...")
         
-        # Initial Base View (Immediate)
-        with out_vis:
-            out_vis.clear_output(wait=True)
-            view = py3Dmol.view(width=800, height=600)
-            
-            if receptor_path and os.path.exists(receptor_path):
-                with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
-                view.setStyle({'model': -1}, {})
-                view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
-            
-            if extracted_pocket_path and os.path.exists(extracted_pocket_path):
-                 with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
-                 view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
-                 
-            if box_center and box_size:
-                 cx, cy, cz = box_center; sx, sy, sz = box_size
-                 view.addBox({'center': {'x': cx, 'y': cy, 'z': cz},'dimensions': {'w': sx, 'h': sy, 'd': sz},'color': 'red','opacity': 0.5})
-                 
-            view.zoomTo()
-            # USE display() explicitly for thread-safe widget updating
-            display(view)
+        view = py3Dmol.view(width=800, height=600)
+        
+        if receptor_path and os.path.exists(receptor_path):
+            with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
+            view.setStyle({'model': -1}, {})
+            view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+        
+        if extracted_pocket_path and os.path.exists(extracted_pocket_path):
+             with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+             view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
+             
+        if box_center and box_size:
+             cx, cy, cz = box_center; sx, sy, sz = box_size
+             view.addBox({'center': {'x': cx, 'y': cy, 'z': cz},'dimensions': {'w': sx, 'h': sy, 'd': sz},'color': 'red','opacity': 0.5})
+             
+        view.zoomTo()
+        out_vis.value = view._make_html()
         
         while True:
             if stop_event.is_set(): break
@@ -348,26 +345,27 @@ def viz_loop():
                          if final_peps:
                              log(f"Pipeline Finished. Found {len(final_peps)} Final Peptides.")
                              
-                             with out_vis:
-                                out_vis.clear_output(wait=True)
-                                view = py3Dmol.view(width=800, height=600)
-                                
-                                if receptor_path and os.path.exists(receptor_path):
-                                    with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
-                                    view.setStyle({'model': -1}, {})
-                                    view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
-                                    
-                                if extracted_pocket_path and os.path.exists(extracted_pocket_path):
-                                     with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
-                                     view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.3}})
-                                
-                                for pep in final_peps:
-                                    with open(pep, 'r') as f: view.addModel(f.read(), "pdb")
-                                    view.setStyle({'model': -1}, {'stick': {'colorscheme': 'blueCarbon'}})
-                                    
-                                view.zoomTo()
-                                display(view)
-                             showing_final = True
+                             if final_peps:
+                                 log(f"Pipeline Finished. Found {len(final_peps)} Final Peptides.")
+                                 
+                                 view = py3Dmol.view(width=800, height=600)
+                                 
+                                 if receptor_path and os.path.exists(receptor_path):
+                                     with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
+                                     view.setStyle({'model': -1}, {})
+                                     view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+                                     
+                                 if extracted_pocket_path and os.path.exists(extracted_pocket_path):
+                                      with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+                                      view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.3}})
+                                 
+                                 for pep in final_peps:
+                                     with open(pep, 'r') as f: view.addModel(f.read(), "pdb")
+                                     view.setStyle({'model': -1}, {'stick': {'colorscheme': 'blueCarbon'}})
+                                     
+                                 view.zoomTo()
+                                 out_vis.value = view._make_html()
+                                 showing_final = True
                 break
             
             # Live Fragment Monitoring
@@ -376,31 +374,29 @@ def viz_loop():
                 count = len(files)
                 
                 if count >= last_count + 5 and count > 0:
-                     with out_vis:
-                        out_vis.clear_output(wait=True)
-                        view = py3Dmol.view(width=800, height=600)
-                        
-                        if receptor_path and os.path.exists(receptor_path):
-                            with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
-                            view.setStyle({'model': -1}, {})
-                            view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
-                            
-                        if extracted_pocket_path and os.path.exists(extracted_pocket_path):
-                            with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
-                            view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
-                            
-                        if box_center and box_size:
-                             cx, cy, cz = box_center; sx, sy, sz = box_size
-                             view.addBox({'center': {'x': cx, 'y': cy, 'z': cz},'dimensions': {'w': sx, 'h': sy, 'd': sz},'color': 'red','opacity': 0.5})
-    
-                        sorted_files = sorted(files, key=os.path.getmtime, reverse=True)[:50]
-                        for pf in sorted_files:
-                            with open(pf, 'r') as f: view.addModel(f.read(), "pdb")
-                            view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon'}})
-                            
-                        view.zoomTo()
-                        display(view)
+                     view = py3Dmol.view(width=800, height=600)
                      
+                     if receptor_path and os.path.exists(receptor_path):
+                         with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
+                         view.setStyle({'model': -1}, {})
+                         view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+                         
+                     if extracted_pocket_path and os.path.exists(extracted_pocket_path):
+                         with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+                         view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
+                         
+                     if box_center and box_size:
+                          cx, cy, cz = box_center; sx, sy, sz = box_size
+                          view.addBox({'center': {'x': cx, 'y': cy, 'z': cz},'dimensions': {'w': sx, 'h': sy, 'd': sz},'color': 'red','opacity': 0.5})
+    
+                     sorted_files = sorted(files, key=os.path.getmtime, reverse=True)[:50]
+                     for pf in sorted_files:
+                         with open(pf, 'r') as f: view.addModel(f.read(), "pdb")
+                         view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon'}})
+                         
+                     view.zoomTo()
+                     out_vis.value = view._make_html()
+                  
                      last_count = count
             
             time.sleep(2)
