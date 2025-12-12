@@ -112,139 +112,49 @@ def configure_modeller(license_key='MODELIRANJE', repo_dir='FrankPEPstein'):
         return True
     return False
 
-def setup_external_tools(drive_ids=None):
-    if drive_ids is None: drive_ids = {}
-    
+        return True
+    return False
+
+def setup_external_tools(files_id=None):
     # Install gdown if needed
     try: import gdown
     except ImportError: subprocess.run([sys.executable, "-m", "pip", "install", "gdown"], check=True); import gdown
 
     # Determine Base Dir
     base_dir = "FrankPEPstein" if os.path.exists("FrankPEPstein") else "."
+    
+    # 1. Download Single Archive
+    if files_id:
+        archive_path = os.path.join(base_dir, "files.tar.gz")
+        # Check if already extracted (simple check for DB and utilities)
+        if not (os.path.exists(os.path.join(base_dir, "DB")) and os.path.exists(os.path.join(base_dir, "utilities"))):
+            if not os.path.exists(archive_path):
+                 print(f"Downloading files.tar.gz (ID: {files_id})...")
+                 gdown.download(f'https://drive.google.com/uc?id={files_id}', archive_path, quiet=True)
+            
+            if os.path.exists(archive_path):
+                 print("Extracting files.tar.gz (Parallel with pigz)...")
+                 # pigz -d -c files.tar.gz | tar xf -
+                 # or tar -I pigz -xf ...
+                 subprocess.run(f"tar -I pigz -xf {archive_path} -C {base_dir}", shell=True, check=True)
+                 # os.remove(archive_path) # Optional clean up
+    
+    # 2. Permissions & Final Setup
     utilities_dir = os.path.join(base_dir, "utilities")
-    db_dir = os.path.join(base_dir, "DB")
-    os.makedirs(utilities_dir, exist_ok=True)
-    os.makedirs(db_dir, exist_ok=True)
-
-
-    # 1. Database (Parallel Download & Decompress)
-    db_id = drive_ids.get("db_id")
-    # Determine pigz availability
-    use_pigz = True if subprocess.run("which pigz", shell=True).returncode == 0 else False
-    extract_flag = "-I pigz -xf" if use_pigz else "-xzf"
-
-    db_tar = os.path.join(base_dir, "filtered_DB_P5-15_R30_id10_optim.tar.gz")
-    
-    # Check if Main DB is already populated (simple check)
-    if not os.path.exists(os.path.join(db_dir, "filtered_DB_P5-15_R30_id10")):
-        if db_id:
-             if not os.path.exists(db_tar):
-                 print(f"Downloading DB (ID: {db_id})...")
-                 # We assume single big tarball for now based on user context
-                 gdown.download(f'https://drive.google.com/uc?id={db_id}', db_tar, quiet=True)
-             
-             if os.path.exists(db_tar):
-                 print(f"Extracting DB using {extract_flag}...")
-                 subprocess.run(f"tar {extract_flag} {db_tar} -C {db_dir} > /dev/null 2>&1", shell=True, check=True)
-                 # Optional: delete tar to save space?
-                 # os.remove(db_tar)
-
-    # 1.5 Minipockets Database
-    mini_id = drive_ids.get("minipockets_id")
-    mini_tar = os.path.join(base_dir, "minipockets.tar.gz")
-    # We check for a known folder inside, e.g. "minipockets_surface80_winsize3_size3_curated"
-    # Or just check if the tar was extracted.
-    # User said "-fm" points to it.
-    # Let's assume the tar extracts to a folder inside DB.
-    
-    if mini_id:
-        # Check standard folder name (guess or generic)
-        # If user didn't specify name, we rely on tar content.
-        # But we need a check to avoid redownload.
-        # Let's check if 'minipockets*' exists in DB dir
-        existing_mini = glob.glob(os.path.join(db_dir, "minipockets*"))
+    if os.path.exists(utilities_dir):
+        print("Fixing permissions...")
+        subprocess.run(f"chmod -R +x {utilities_dir}", shell=True)
         
-        # Verify if existing folder is actually populated
-        valid_install = False
-        if existing_mini:
-             target_folder = existing_mini[0]
-             if len(os.listdir(target_folder)) > 10: # Arbitrary threshold to ensure not empty
-                 print(f"Minipockets DB found: {os.path.basename(target_folder)} ({len(os.listdir(target_folder))} files)")
-                 valid_install = True
-             else:
-                 print(f"Found empty/corrupt minipockets folder. Re-installing...")
-                 shutil.rmtree(target_folder)
+        # Add paths
+        adfr_bin = os.path.join(utilities_dir, "ADFR/bin")
+        if os.path.exists(adfr_bin) and adfr_bin not in os.environ['PATH']:
+             os.environ['PATH'] += f":{adfr_bin}"
+             
+        click_bin = os.path.join(utilities_dir, "click") # assuming it extracts directly or in bin
+        # Adjust check if structure is different (e.g. utilities/Click/bin)
+        # User said "utilities que quedaran en ~/. Ahora ADFR al extraerse queda listo... lo mismo con click"
+        # We assume standard structure.
         
-        if not valid_install:
-             if not os.path.exists(mini_tar):
-                  print(f"Downloading Minipockets DB (ID: {mini_id})...")
-                  gdown.download(f'https://drive.google.com/uc?id={mini_id}', mini_tar, quiet=True)
-             
-             if os.path.exists(mini_tar):
-                  print(f"Extracting Minipockets DB (This may take a moment)...")
-                  # Remove silence to debug errors
-                  subprocess.run(f"tar {extract_flag} {mini_tar} -C {db_dir}", shell=True, check=True)
-                  
-                  # Validate again
-                  new_mini = glob.glob(os.path.join(db_dir, "minipockets*"))
-                  if new_mini:
-                       print(f"✅ Extracted {len(os.listdir(new_mini[0]))} minipockets.")
-                  else:
-                       print("❌ Extraction warning: 'minipockets' glob failed. Check DB folder structure.")
-
-    # 2. Utilities (ADFR)
-    # Usually passed as zip or tar
-    # User might have "utilities_pkg_id"
-    util_id = drive_ids.get("utilities_pkg_id")
-    util_tar = os.path.join(base_dir, "utilities.tar.gz")
-    
-    if util_id and not os.path.exists(os.path.join(utilities_dir, "ADFRsuite_x86_64Linux_1.0")):
-         if not os.path.exists(util_tar):
-              gdown.download(f'https://drive.google.com/uc?id={util_id}', util_tar, quiet=True)
-         subprocess.run(f"tar {extract_flag} {util_tar} -C {utilities_dir} > /dev/null 2>&1", shell=True, check=True)
-    
-    # Ensure executables have permission (Fix for "Permission denied")
-    print("Fixing database permissions...")
-    subprocess.run(f"chmod -R +x {utilities_dir}", shell=True)
-
-    # ADFR Installation / License Check
-    # Look for install script
-    adfr_root = os.path.join(utilities_dir, "ADFRsuite_x86_64Linux_1.0")
-    install_sh = os.path.join(utilities_dir, "install.sh") # Common location? Or inside extracted folder?
-    
-    # Sometimes it extracts AS "ADFRsuite..." directly.
-    # If the user provides a zip of the INSTALLED directory, no installation needed.
-    # Checks bin
-    adfr_bin = os.path.join(adfr_root, "bin")
-    if os.path.exists(adfr_bin):
-        # Add to PATH
-        if adfr_bin not in os.environ['PATH']:
-            os.environ['PATH'] += f":{adfr_bin}"
-            print(f"Added ADFR bin to PATH: {adfr_bin}")
-    else:
-        # If bin missing, maybe we need to run install?
-        # Check for an install script in utilities
-        candidates = glob.glob(os.path.join(utilities_dir, "*install*.sh"))
-        if candidates:
-             installer = candidates[0]
-             print(f"Running ADFR installer: {installer}")
-             # Pipe 'yes' to accept license
-             # usage: yes | ./install.sh -d target_dir
-             # or simply ./install.sh and expect yes
-             # We assume it asks "Do you accept... (y/n)"
-             subprocess.run(f"yes | bash {installer}", shell=True) # Try bash execution
-             
-             # Recheck bin
-             if os.path.exists(adfr_bin):
-                  os.environ['PATH'] += f":{adfr_bin}"
-
-    # Click
-    click_bin = os.path.join(utilities_dir, "Click/bin") 
-    if os.path.exists(click_bin):
-        if click_bin not in os.environ['PATH']:
-             os.environ['PATH'] += f":{click_bin}"
-        subprocess.run(f"chmod +x {click_bin}/click", shell=True)
-
 '''
         os.makedirs("FrankPEPstein/scripts", exist_ok=True)
         with open("FrankPEPstein/scripts/notebook_utils.py", "w") as f:
@@ -259,16 +169,10 @@ def setup_external_tools(drive_ids=None):
         from scripts import notebook_utils
         
         # Correct Drive IDs
-        drive_ids = {
-            "db_id": "13a6M_UVham9SiBCE6PCQQi6CnUvGNvNO", # Provided by user
-            "minipockets_id": "1a4GoZ1ZT-DNYMyvVtKJukNdF6TAaLJU5", # New Minipockets DB
-            "utilities_pkg_id": "1gmRj8mva84-JB7UXUcQfB3Ziw_nwwdox", # Kept existing
-            # If explicit ADFR installer needed:
-            # "adfr_installer_id": "..."
-        }
+        files_id = "1M30wmaf6vaXJl1kmj-0cD5yhBYDCx_xw"
         
         with SuppressStdout():
-             notebook_utils.setup_external_tools(drive_ids)
+             notebook_utils.setup_external_tools(files_id)
         pbar.update(1)
 
         # 6. Configure Modeller
@@ -281,6 +185,9 @@ def setup_external_tools(drive_ids=None):
     # 3. Verify Executables
     print(f"\n{'='*20}")
     print("Verifying Executables...")
+    
+    base_dir = "FrankPEPstein" if os.path.exists("FrankPEPstein") else "."
+    utilities_dir = os.path.join(base_dir, "utilities")
     
     # Check Click
     click_bin = os.path.join(utilities_dir, "Click", "bin", "click")
