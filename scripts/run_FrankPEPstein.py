@@ -31,9 +31,10 @@ def main():
     minipockets_folder = os.path.join(initial_path, "DB/minipockets_surface80_winsize3_size3_curated-db")
     db_folder = os.path.join(initial_path, "DB/filtered_DB_P5-15_R30_id10")
     
-    # Pocket Path (Centralized)
-    pockets_folder = os.path.join(initial_path, "pockets")
-    pocket_pdb = os.path.join(pockets_folder, "pocket.pdb")
+    # Pocket Path (Now in FrankPEPstein_run due to refactor)
+    # pockets_folder was removed.
+    run_folder_init = os.path.join(initial_path, "FrankPEPstein_run")
+    pocket_pdb = os.path.join(run_folder_init, "pocket.pdb")
     
     if not os.path.exists(pocket_pdb):
         print(f"Error: Pocket file not found at {pocket_pdb}")
@@ -57,7 +58,7 @@ def main():
     superposer_cmd_list = [
         sys.executable, f"{repo_folder}/scripts/superposer.py",
         "-i", initial_path,
-        "-T", pocket_pdb,
+        "-T", "pocket.pdb", # Simply filename, we are in the dir
         "-d", db_folder,
         "-t", str(threads),
         "-fm", minipockets_folder,
@@ -83,11 +84,11 @@ def main():
         os.system(f'cp {initial_path}/receptor.pdb .')
         
         print(f"--- Running FrankVINA 1 ---")
-        cmd_vina1 = f'{sys.executable} {repo_folder}/scripts/frankVINA_1.py {initial_path} receptor.pdb {threads}'
+        cmd_vina1 = f'{sys.executable} {repo_folder}/scripts/frankVINA_1.py {initial_path} {threads}'
         print(f"CMD: {cmd_vina1}")
         os.system(cmd_vina1)
         
-        os.system("rm * 2> /dev/null") # Cleanup (careful, this might delete logs/pdbs if script failed, but following original logic)
+        # os.system("rm * 2> /dev/null") # Cleanup (careful, this might delete logs/pdbs if script failed, but following original logic)
         
         # 3. Patch Clustering & FrankVINA 2
         print(f"--- Checking for patches ---")
@@ -97,7 +98,7 @@ def main():
             print("No patch files in folder")
         elif len(patch_files) > 1:
             print(f"Running patch_clustering with kmer: {pep_size} ")
-            os.system(f'{sys.executable} {repo_folder}/scripts/patch_clustering.py -w {pep_size} -t {threads}')
+            os.system(f'{sys.executable} {repo_folder}/scripts/patch_clustering.py -w {pep_size} -t {threads} -c 5000')
             
             cluster_dir = f"frankPEPstein_{pep_size}"
             if os.path.exists(cluster_dir):
@@ -105,7 +106,7 @@ def main():
                 os.system(f'cp {initial_path}/receptor.pdb .')
                 
                 print(f"--- Running FrankVINA 2 ---")
-                cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} receptor.pdb {threads} {candidates_number}'
+                cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} {threads} {candidates_number}'
                 print(f"CMD: {cmd_vina2}")
                 os.system(cmd_vina2)
                 
@@ -115,12 +116,18 @@ def main():
                  
         elif len(patch_files) == 1:
              print("Only one patch file in folder")
-             # Logic for single file (Handle if needed, user didn't specify strict instructions here but original had some logic)
-             # keeping original brief check logic:
-             # os.makedirs(pep_dir, exist_ok=True) -> pep_dir undefined in original snippet I saw earlier? 
-             # Assuming standard simple logic for now.
              pass
              
+        # [ADDED] Move used patch files to 'all_patches_found' folder for organization
+        all_patches_dir = "all_patches_found"
+        if os.path.exists(output_superposer_path): # Ensure we are in the right context/dir or check files locally
+           # We are already in output_superposer_path due to os.chdir above line 83
+           if not os.path.exists(all_patches_dir):
+               os.makedirs(all_patches_dir)
+           
+           print("Moving patch files to 'all_patches_found'...")
+           os.system(f"mv patch_file_*.pdb {all_patches_dir} 2> /dev/null")
+
     else:
         print(f"Error: {output_superposer_path} not found.")
         sys.exit(1)

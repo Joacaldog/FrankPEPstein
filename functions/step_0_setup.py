@@ -144,6 +144,14 @@ def setup_external_tools(files_id=None):
     # 2. Permissions & Final Setup
     utilities_dir = os.path.join(base_dir, "utilities")
     if os.path.exists(utilities_dir):
+        # [ADDED] Rename extracted ADFR folder to Suite name required by tools
+        adfr_extracted = os.path.join(utilities_dir, "ADFR")
+        adfr_target = os.path.join(utilities_dir, "ADFRsuite_x86_64Linux_1.0")
+        if os.path.exists(adfr_extracted) and not os.path.exists(adfr_target):
+             print(f"Renaming {adfr_extracted} to {adfr_target}...")
+             os.rename(adfr_extracted, adfr_target)
+             
+        if os.path.exists(utilities_dir):
         print("Fixing permissions...")
         subprocess.run(f"chmod -R +x {utilities_dir}", shell=True)
         

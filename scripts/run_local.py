@@ -80,10 +80,12 @@ def main():
         print(f"Copying initial pocket to {dest_initial_pocket}...")
         shutil.copy(args.pocket, dest_initial_pocket)
         
-    # Process Pocket -> pockets/pocket.pdb
-    pockets_dir = os.path.join(current_dir, "pockets")
+    # Process Pocket -> FrankPEPstein_run/pocket.pdb
+    pockets_dir = os.path.join(current_dir, "FrankPEPstein_run")
     os.makedirs(pockets_dir, exist_ok=True)
     dest_processed_pocket = os.path.join(pockets_dir, "pocket.pdb")
+    dest_receptor_run = os.path.join(pockets_dir, "receptor.pdb") # [ADDED] Save receptor to run folder
+    shutil.copy(dest_receptor, dest_receptor_run)
     
     print(f"Processing pocket to {dest_processed_pocket}...")
     center, size = calculate_box_and_save(dest_initial_pocket, dest_processed_pocket)

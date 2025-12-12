@@ -45,13 +45,13 @@ detection_mode = "Auto Detect" #@param ["Auto Detect", "Manual Upload"]
 # Global variables
 receptor_filename = None
 initial_path = os.getcwd() # Main Directory
-pockets_dir = os.path.join(initial_path, "pockets") # Centralized Storage
+# Refactor: Use FrankPEPstein_run as centralized storage for execution
+pockets_dir = os.path.join(initial_path, "FrankPEPstein_run") 
 final_pockets_list = []
 
 # Ensure pockets dir exists
-if os.path.exists(pockets_dir):
-    shutil.rmtree(pockets_dir) # Clean start? Or keep? Clean start is safer for logic
-os.makedirs(pockets_dir, exist_ok=True)
+if not os.path.exists(pockets_dir):
+    os.makedirs(pockets_dir)
 
 # --- Persistence Logic ---
 def save_pipeline_state(updates):

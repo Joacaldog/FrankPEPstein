@@ -16,23 +16,32 @@ import subprocess
 import random  # Para hacer la muestra aleatoria
 
 initial_path = sys.argv[1]
-receptor_file_chain = sys.argv[2]
-receptor_file = receptor_file_chain
-threads = sys.argv[3]
-selected_peps = int(sys.argv[4])
+receptor_file = "receptor.pdb"
+threads = sys.argv[2]
+selected_peps = int(sys.argv[3])
+
+# [ADDED] ADFR Configuration
+ADFR_DIR = os.path.join(initial_path, "utilities/ADFRsuite_x86_64Linux_1.0")
+ADFR_BIN = os.path.join(ADFR_DIR, "bin")
+ADFR_LIB = os.path.join(ADFR_DIR, "lib")
+
+# Prepend to PATH so tools can find their python2.7 and libraries
+os.environ["PATH"] = ADFR_BIN + os.pathsep + os.environ["PATH"]
+# Set LD_LIBRARY_PATH so binaries find libpython2.7.so.1.0
+os.environ["LD_LIBRARY_PATH"] = ADFR_LIB + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
 
 # Configuration Variables
-REDUCE_PATH = f"{initial_path}/utilities/ADFR/bin/reduce"
+REDUCE_PATH = os.path.join(ADFR_BIN, "reduce")
 REDUCE_DB_PATH = f"{initial_path}/DB/reduce_wwPDB_het_dict.txt"
-PREPARE_RECEPTOR_PATH = f"{initial_path}/utilities/ADFR/bin/prepare_receptor"
-PREPARE_LIGAND_PATH = f"{initial_path}/utilities/ADFR/bin/prepare_ligand"
+PREPARE_RECEPTOR_PATH = os.path.join(ADFR_BIN, "prepare_receptor")
+PREPARE_LIGAND_PATH = os.path.join(ADFR_BIN, "prepare_ligand")
 VINA_PATH = f"{initial_path}/FrankPEPstein/utilities/vina_1.2.4_linux_x86_64"
-OBABEL_PATH = f"{initial_path}/utilities/ADFR/bin/obabel"
+OBABEL_PATH = os.path.join(ADFR_BIN, "obabel")
 
 frank_folder_init = os.getcwd()
 tqdm._instances.clear()
 
-MAX_PEPTIDES = 100  # Límite de muestreo
+MAX_PEPTIDES = 50  # Límite de muestreo
 
 def run_cmd(cmd):
     subprocess.run(cmd, shell=True, check=False,

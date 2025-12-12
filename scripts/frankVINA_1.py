@@ -14,17 +14,27 @@ import multiprocessing
 # Configuration Variables
 
 initial_path = sys.argv[1]
-receptor_file_chain = sys.argv[2]
-receptor_file = receptor_file_chain
-threads = sys.argv[3]
+receptor_file = "receptor.pdb"
+threads = sys.argv[2]
+# [ADDED] ADFR Configuration
+ADFR_DIR = os.path.join(initial_path, "utilities/ADFRsuite_x86_64Linux_1.0")
+ADFR_BIN = os.path.join(ADFR_DIR, "bin")
+ADFR_LIB = os.path.join(ADFR_DIR, "lib")
+
+# Prepend to PATH so tools can find their python2.7 and libraries
+os.environ["PATH"] = ADFR_BIN + os.pathsep + os.environ["PATH"]
+# Set LD_LIBRARY_PATH so binaries find libpython2.7.so.1.0
+os.environ["LD_LIBRARY_PATH"] = ADFR_LIB + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
 
 # Configuration Variables
-REDUCE_PATH = f"{initial_path}/utilities/ADFR/bin/reduce"
+# Using absolute paths via ADFR_BIN for clarity
+REDUCE_PATH = os.path.join(ADFR_BIN, "reduce")
 REDUCE_DB_PATH = f"{initial_path}/DB/reduce_wwPDB_het_dict.txt"
-PREPARE_RECEPTOR_PATH = f"{initial_path}/utilities/ADFR/bin/prepare_receptor"
-PREPARE_LIGAND_PATH = f"{initial_path}/utilities/ADFR/bin/prepare_ligand"
+# Using the binaries directly now that they are in PATH context
+PREPARE_RECEPTOR_PATH = os.path.join(ADFR_BIN, "prepare_receptor")
+PREPARE_LIGAND_PATH = os.path.join(ADFR_BIN, "prepare_ligand")
 VINA_PATH = f"{initial_path}/FrankPEPstein/utilities/vina_1.2.4_linux_x86_64"
-OBABEL_PATH = f"{initial_path}/utilities/ADFR/bin/obabel"
+OBABEL_PATH = os.path.join(ADFR_BIN, "obabel")
 
 
 
@@ -63,7 +73,7 @@ def scoring_filter():
 def main():
     os.system(f"{REDUCE_PATH} -Quiet -DB {REDUCE_DB_PATH} {receptor_file} 1> H_{receptor_file} 2> /dev/null")
     os.system(f"sed -i '/END/d' H_{receptor_file}")
-    os.system(f'{PREPARE_RECEPTOR_PATH} -r H_{receptor_file} -o {receptor_file}qt 1> /dev/null 2> /dev/null')
+    os.system(f'{PREPARE_RECEPTOR_PATH} -r H_{receptor_file} -o {receptor_file}qt')
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")
     def vina_scorer(file):
@@ -82,12 +92,15 @@ def main():
     scoring_filter()
     os.chdir("../")
     os.system("rm -r temp_folder")
-    os.chdir("top_10_patches")
-    for pep_pdbqt in os.listdir("."):
-        if fnmatch.fnmatch(pep_pdbqt, '*.pdbqt'):
-            base = pep_pdbqt.replace("_out.pdbqt", "")
-            os.system(f"{OBABEL_PATH} -ipdbqt {pep_pdbqt} -o pdb -O {base}.pdb")
-            os.system(f'rm {pep_pdbqt} 1> /dev/null 2> /dev/null')
+    if os.path.exists("top_10_patches"):
+        os.chdir("top_10_patches")
+        for pep_pdbqt in os.listdir("."):
+            if fnmatch.fnmatch(pep_pdbqt, '*.pdbqt'):
+                base = pep_pdbqt.replace("_out.pdbqt", "")
+                os.system(f"{OBABEL_PATH} -ipdbqt {pep_pdbqt} -o pdb -O {base}.pdb")
+                os.system(f'rm {pep_pdbqt} 1> /dev/null 2> /dev/null')
+    else:
+        print("Warning: 'top_10_patches' folder not found. No patches passed energy filter.")
 
 if __name__ == '__main__':
     main()

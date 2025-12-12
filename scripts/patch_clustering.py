@@ -460,7 +460,7 @@ def main():
         Parallel(n_jobs=threads, backend="threading")(delayed(frag_min)(peptide_ordered, k_mers_list) for peptide_ordered in tqdm(final_peptides_list, total=len(final_peptides_list), 
                                                                                          desc=f"generating peptides of length {winsize}", position=0, leave=True))
     os.chdir(folder_output)
-    os.system("rm *noEND.pdb *connects.txt")
+    os.system("rm *noEND.pdb *connects.txt 2> /dev/null")
         
 if __name__ == '__main__':
     main()
