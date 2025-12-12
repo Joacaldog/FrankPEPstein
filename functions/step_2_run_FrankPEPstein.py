@@ -82,6 +82,33 @@ btn_stop = widgets.Button(description='Stop & Reset', button_style='danger', ico
 out_log = widgets.Output(layout={'border': '1px solid black', 'height': '200px', 'overflow_y': 'scroll'})
 out_vis = widgets.Output()
 
+# --- Progress Widgets ---
+prog_style = {'description_width': 'initial'}
+layout_full = widgets.Layout(width='98%')
+
+# 1. Superposition / Fragment Finding
+pb_super = widgets.IntProgress(value=0, min=0, max=100, description='1. Superposition:', style=prog_style, layout=layout_full)
+lbl_super = widgets.Label(value="Waiting...")
+
+# 2. Fragment Filtering (FrankVINA 1)
+pb_filter1 = widgets.IntProgress(value=0, min=0, max=100, description='2. Frag. Filter:', style=prog_style, layout=layout_full)
+lbl_filter1 = widgets.Label(value="Waiting...")
+
+# 3. Clustering
+pb_cluster = widgets.IntProgress(value=0, min=0, max=100, description='3. Clustering:', style=prog_style, layout=layout_full)
+lbl_cluster = widgets.Label(value="Waiting...")
+
+# 4. Peptide Filtering (FrankVINA 2)
+pb_filter2 = widgets.IntProgress(value=0, min=0, max=100, description='4. Pep. Filter:', style=prog_style, layout=layout_full)
+lbl_filter2 = widgets.Label(value="Waiting...")
+
+ui_progress = widgets.VBox([
+    widgets.HBox([pb_super, lbl_super]),
+    widgets.HBox([pb_filter1, lbl_filter1]),
+    widgets.HBox([pb_cluster, lbl_cluster]),
+    widgets.HBox([pb_filter2, lbl_filter2])
+])
+
 # --- Execution Logic ---
 process_handle = None
 stop_event = threading.Event()
@@ -123,33 +150,75 @@ def run_pipeline(pep_size, threads, candidates):
         log("⚠️ Gridbox definition missing in state. Execution will fail.")
         return
 
-    log(f"--- Starting Pipeline ---")
+    log("--- Starting Pipeline ---")
     log(f"Command: {' '.join(cmd_list)}")
     
+    # reset bars
+    pb_super.value = 0; lbl_super.value = "Waiting..."
+    pb_filter1.value = 0; lbl_filter1.value = "Waiting..."
+    pb_cluster.value = 0; lbl_cluster.value = "Waiting..."
+    pb_filter2.value = 0; lbl_filter2.value = "Waiting..."
+    
     try:
-        process_handle = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=initial_path)
+        # Use Popen with PIPE for stdout to read line by line
+        process_handle = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=initial_path, bufsize=1, universal_newlines=True)
         
         # Monitor Loop
-        while True:
-            ret = process_handle.poll()
+        for line in iter(process_handle.stdout.readline, ''):
             if stop_event.is_set():
                 process_handle.terminate()
                 log("🛑 Process stopped by user.")
                 return
             
-            if ret is not None:
-                # Finished
-                break
+            line_str = line.strip()
+            if not line_str: continue
+            
+            # log(line_str) # Optional: too verbose for main log? Maybe just errors or key lines? 
+            # Let's log it to out_log so user sees details if they scroll
+            # But maybe filter tqdm bars?
+            if "Minimizing" not in line_str and "%" not in line_str:
+                 log(line_str)
+            
+            # --- Progress Logic ---
+            if "Running Superposer" in line_str:
+                pb_super.value = 10; lbl_super.value = "Running..."
+                pb_filter1.value = 0; lbl_filter1.value = "Waiting..."
                 
-            # Optional: Read output line by line to show progress in log?
-            # For now, simplistic monitoring.
-            time.sleep(1)
+            elif "Running FrankVINA 1" in line_str:
+                pb_super.value = 100; lbl_super.value = "Done"
+                pb_filter1.value = 10; lbl_filter1.value = "Running..."
+                
+            elif "checking for patches" in line_str.lower():
+                pb_filter1.value = 90; lbl_filter1.value = "Checking..."
+                
+            elif "Running patch_clustering" in line_str:
+                pb_filter1.value = 100; lbl_filter1.value = "Done"
+                pb_cluster.value = 10; lbl_cluster.value = "Running..."
+                
+            elif "Running FrankVINA 2" in line_str:
+                pb_cluster.value = 100; lbl_cluster.value = "Done"
+                pb_filter2.value = 10; lbl_filter2.value = "Running..."
+            
+            elif "Minimizing complexes" in line_str:
+                pb_filter2.value = 50; lbl_filter2.value = "Minimizing..."
+                
+            elif "Converting top candidates" in line_str:
+                pb_filter2.value = 90; lbl_filter2.value = "Finalizing..."
+            
+            # TQDM parsing (Simplistic)
+            # If we see tqdm output we could update the active bar value?
+            # It's hard to parse \r lines reliably without logic. 
+            # We'll rely on stage headers for big jumps.
+            
+        process_handle.wait()
+        ret = process_handle.returncode
             
         if ret != 0:
-            stderr = process_handle.stderr.read()
-            log(f"❌ Pipeline failed: {stderr}")
+            log(f"❌ Pipeline failed with code {ret}")
             return
             
+        # Final set
+        pb_filter2.value = 100; lbl_filter2.value = "Done"
         log("✅ Pipeline Finished Successfully.")
         
     except Exception as e:
@@ -164,39 +233,6 @@ def on_run_click(b):
     # Start Visualization Thread
     threading.Thread(target=viz_loop, daemon=True).start()
     
-    # Initial Visualization (Static) - Immediate Feedback
-    with out_vis:
-        out_vis.clear_output(wait=True)
-        view = py3Dmol.view(width=800, height=600)
-        
-        # Receptor
-        if receptor_path and os.path.exists(receptor_path):
-            with open(receptor_path, 'r') as f:
-                view.addModel(f.read(), "pdb")
-            view.setStyle({'model': -1}, {})
-            view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
-        
-        # Pocket (Orange)
-        if extracted_pocket_path and os.path.exists(extracted_pocket_path):
-             with open(extracted_pocket_path, 'r') as f:
-                view.addModel(f.read(), "pdb")
-             view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
-        
-        # GridBox (Red)
-        if box_center and box_size:
-             cx, cy, cz = box_center
-             sx, sy, sz = box_size
-             view.addBox({
-                 'center': {'x': cx, 'y': cy, 'z': cz},
-                 'dimensions': {'w': sx, 'h': sy, 'd': sz},
-                 'color': 'red',
-                 'opacity': 0.5
-             })
-             
-        view.zoomTo()
-        view.show()
-        print("Scanning for fragments...")
-        
     # Run Pipeline in Thread
     def target():
         run_pipeline(w_pep_size.value, w_threads.value, w_candidates.value)
@@ -212,104 +248,138 @@ def on_stop_click(b):
     # Cleanup logic requested by user
     run_folder_name = "FrankPEPstein_run"
     output_superposer_path = os.path.join(initial_path, run_folder_name, f"superpockets_residuesAligned3_RMSD0.1")
+    temp_folder_path = os.path.join(initial_path, run_folder_name, f"temp_folder_residuesAligned3_RMSD0.1")
     
     if os.path.exists(output_superposer_path):
         log(f"Cleaning up {output_superposer_path}...")
         os.system(f"rm -rf {output_superposer_path}")
         
+    if os.path.exists(temp_folder_path):
+        log(f"Cleaning up {temp_folder_path}...")
+        os.system(f"rm -rf {temp_folder_path}")
+        
     btn_run.disabled = False
     log("Stopped and Reset.")
-
 btn_run.on_click(on_run_click)
 btn_stop.on_click(on_stop_click)
 
 # --- Visualization Logic ---
 def viz_loop():
-    # Monitor output folder
-    run_folder_name = "FrankPEPstein_run"
-    super_out_name = f"superpockets_residuesAligned3_RMSD0.1"
-    target_dir = os.path.join(initial_path, run_folder_name, super_out_name)
-    
-    last_count = 0
-    
-    # Wait for directory to exist
-    while not os.path.exists(target_dir):
-        if stop_event.is_set() or (btn_run.disabled == False): return # Stop if finished or cancelled
-        time.sleep(1)
+    try:
+        # Monitor output folder
+        run_folder_name = "FrankPEPstein_run"
+        super_out_name = "superpockets_residuesAligned3_RMSD0.1"
+        target_dir = os.path.join(initial_path, run_folder_name, super_out_name)
+        all_patches_dir = os.path.join(target_dir, "all_patches_found") 
         
-    log("Visualization started monitoring...")
-    
-    while True:
-        if stop_event.is_set() or (btn_run.disabled == False): break
+        last_count = 0
+        showing_final = False
         
-        files = glob.glob(os.path.join(target_dir, "patch_file_*.pdb"))
-        count = len(files)
+        log("Visualization monitoring started...")
         
-        # Update every 10 new fragments
-        if count >= last_count + 10:
-            with out_vis:
-                out_vis.clear_output(wait=True)
-                
-                view = py3Dmol.view(width=800, height=600)
-                
-                # Receptor
-                if receptor_path and os.path.exists(receptor_path):
-                    with open(receptor_path, 'r') as f:
-                        view.addModel(f.read(), "pdb")
-                    view.setStyle({'model': -1}, {})
-                    view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'}) # Opacity 0.9 as requested
-                
-                # Pocket (Orange) if extracted exists
-                # Or use the one from state? extracted_pocket_path
-                if extracted_pocket_path and os.path.exists(extracted_pocket_path):
-                     with open(extracted_pocket_path, 'r') as f:
-                        view.addModel(f.read(), "pdb")
-                     view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
-                
-                # GridBox (Red)
-                if box_center and box_size:
-                     # Add box representation using shape
-                     # py3Dmol shape spec: {vertex: [...], ...}
-                     # Easier: add box wireframe
-                     
-                     # Calculate corners
-                     cx, cy, cz = box_center
-                     sx, sy, sz = box_size
-                     
-                     min_x, max_x = cx - sx/2, cx + sx/2
-                     min_y, max_y = cy - sy/2, cy + sy/2
-                     min_z, max_z = cz - sz/2, cz + sz/2
-                     
-                     view.addBox({
-                         'center': {'x': cx, 'y': cy, 'z': cz},
-                         'dimensions': {'w': sx, 'h': sy, 'd': sz},
-                         'color': 'red',
-                         'opacity': 0.5
-                     })
-
-                # Fragments
-                # Load a subset if too many? or all?
-                # Loading hundreds of PDBs into py3Dmol via string might slow down browser.
-                # Let's load the latest 50 or so.
-                sorted_files = sorted(files, key=os.path.getmtime, reverse=True)[:50]
-                
-                for pf in sorted_files:
-                    with open(pf, 'r') as f:
-                        view.addModel(f.read(), "pdb")
-                    view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon'}})
-                
-                view.zoomTo()
-                view.show()
-                print(f"Fragments found: {count} (Showing last {len(sorted_files)})")
-                
-            last_count = count
+        # Initial Base View (Immediate)
+        with out_vis:
+            out_vis.clear_output(wait=True)
+            view = py3Dmol.view(width=800, height=600)
             
-        time.sleep(2)
+            if receptor_path and os.path.exists(receptor_path):
+                with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
+                view.setStyle({'model': -1}, {})
+                view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+            
+            if extracted_pocket_path and os.path.exists(extracted_pocket_path):
+                 with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+                 view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
+                 
+            if box_center and box_size:
+                 cx, cy, cz = box_center; sx, sy, sz = box_size
+                 view.addBox({'center': {'x': cx, 'y': cy, 'z': cz},'dimensions': {'w': sx, 'h': sy, 'd': sz},'color': 'red','opacity': 0.5})
+                 
+            view.zoomTo()
+            # USE display() explicitly for thread-safe widget updating
+            display(view)
+        
+        while True:
+            if stop_event.is_set(): break
+            
+            # Final Check if pipeline finished
+            if btn_run.disabled == False:
+                if not showing_final and os.path.exists(target_dir):
+                    final_folders = glob.glob(os.path.join(target_dir, "top_*_peps"))
+                    if final_folders:
+                         final_folder = final_folders[0]
+                         final_peps = glob.glob(os.path.join(final_folder, "*.pdb"))
+                         
+                         if final_peps:
+                             log(f"Pipeline Finished. Found {len(final_peps)} Final Peptides.")
+                             
+                             with out_vis:
+                                out_vis.clear_output(wait=True)
+                                view = py3Dmol.view(width=800, height=600)
+                                
+                                if receptor_path and os.path.exists(receptor_path):
+                                    with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
+                                    view.setStyle({'model': -1}, {})
+                                    view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+                                    
+                                if extracted_pocket_path and os.path.exists(extracted_pocket_path):
+                                     with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+                                     view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.3}})
+                                
+                                for pep in final_peps:
+                                    with open(pep, 'r') as f: view.addModel(f.read(), "pdb")
+                                    view.setStyle({'model': -1}, {'stick': {'colorscheme': 'blueCarbon'}})
+                                    
+                                view.zoomTo()
+                                display(view)
+                             showing_final = True
+                break
+            
+            # Live Fragment Monitoring
+            if os.path.exists(target_dir):
+                files = glob.glob(os.path.join(target_dir, "patch_file_*.pdb"))
+                count = len(files)
+                
+                if count >= last_count + 5 and count > 0:
+                     with out_vis:
+                        out_vis.clear_output(wait=True)
+                        view = py3Dmol.view(width=800, height=600)
+                        
+                        if receptor_path and os.path.exists(receptor_path):
+                            with open(receptor_path, 'r') as f: view.addModel(f.read(), "pdb")
+                            view.setStyle({'model': -1}, {})
+                            view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+                            
+                        if extracted_pocket_path and os.path.exists(extracted_pocket_path):
+                            with open(extracted_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+                            view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.5}})
+                            
+                        if box_center and box_size:
+                             cx, cy, cz = box_center; sx, sy, sz = box_size
+                             view.addBox({'center': {'x': cx, 'y': cy, 'z': cz},'dimensions': {'w': sx, 'h': sy, 'd': sz},'color': 'red','opacity': 0.5})
+    
+                        sorted_files = sorted(files, key=os.path.getmtime, reverse=True)[:50]
+                        for pf in sorted_files:
+                            with open(pf, 'r') as f: view.addModel(f.read(), "pdb")
+                            view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon'}})
+                            
+                        view.zoomTo()
+                        display(view)
+                     
+                     last_count = count
+            
+            time.sleep(2)
+            
+    except Exception as e:
+        log(f"❌ Visualization Thread Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 # --- Layout ---
 ui = widgets.VBox([
     widgets.HBox([w_pep_size, w_threads, w_candidates]),
     widgets.HBox([btn_run, btn_stop]),
+    ui_progress,
     out_log,
     out_vis
 ])
