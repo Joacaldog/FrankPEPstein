@@ -95,16 +95,35 @@ def generate_view_html(extra_pdbs=None):
                 view.addModel(f.read(), "pdb")
             view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.6}})
 
-        # 3. Gridbox
+        # 3. Gridbox (Wireframe Edges)
         if box_center and box_size:
             cx, cy, cz = box_center
             sx, sy, sz = box_size
-            view.addBox({
-                'center': {'x': cx, 'y': cy, 'z': cz},
-                'dimensions': {'w': sx, 'h': sy, 'd': sz},
-                'color': 'red',
-                'opacity': 0.5
-            })
+            
+            # Calculate corners
+            min_x, max_x = cx - sx/2, cx + sx/2
+            min_y, max_y = cy - sy/2, cy + sy/2
+            min_z, max_z = cz - sz/2, cz + sz/2
+            
+            p1 = {'x':min_x, 'y':min_y, 'z':min_z}
+            p2 = {'x':max_x, 'y':min_y, 'z':min_z}
+            p3 = {'x':max_x, 'y':max_y, 'z':min_z}
+            p4 = {'x':min_x, 'y':max_y, 'z':min_z}
+            
+            p5 = {'x':min_x, 'y':min_y, 'z':max_z}
+            p6 = {'x':max_x, 'y':min_y, 'z':max_z}
+            p7 = {'x':max_x, 'y':max_y, 'z':max_z}
+            p8 = {'x':min_x, 'y':max_y, 'z':max_z}
+            
+            def add_line_edge(start, end):
+                view.addLine({'start': start, 'end': end, 'color': 'red', 'linewidth': 5})
+
+            # Bottom Face
+            add_line_edge(p1, p2); add_line_edge(p2, p3); add_line_edge(p3, p4); add_line_edge(p4, p1)
+            # Top Face
+            add_line_edge(p5, p6); add_line_edge(p6, p7); add_line_edge(p7, p8); add_line_edge(p8, p5)
+            # Verticals
+            add_line_edge(p1, p5); add_line_edge(p2, p6); add_line_edge(p3, p7); add_line_edge(p4, p8)
 
         # 4. Extra Fragments (Live Updates)
         if extra_pdbs:
