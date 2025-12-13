@@ -147,7 +147,7 @@ else:
                         
                     print(f"Auto-detection finished. Found {len(final_pockets_list)} pockets.")
                     if not final_pockets_list:
-                        print(f"⚠️ No pockets found! Try lowering min_alpha_spheres (current: {min_alpha_spheres})")
+                        print(f"⚠️ No pockets found!)")
                 else:
                     print(f"Warning: pockets subdirectory not found in {output_folder}")
             else:
