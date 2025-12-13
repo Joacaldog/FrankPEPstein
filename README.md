@@ -13,32 +13,32 @@ graph TD
     end
 
     subgraph Step 1: Pocket Processing
-    Rec[Receptor PDB] -->|Input| Detect{Detection Mode}
-    Detect -->|Auto| Fpocket[fpocket]
-    Detect -->|Manual| Upload[Upload Pocket PDB]
-    Fpocket -->|Selection| Extract[Extract 5Å Shell]
-    Upload -->|Direct| Clean[Rename Chain to 'p']
-    Extract --> Gridbox[Calculate Gridbox (+3Å Buffer)]
+    Rec["Receptor PDB"] -->|Input| Detect{"Detection Mode"}
+    Detect -->|Auto| Fpocket["fpocket"]
+    Detect -->|Manual| Upload["Upload Pocket PDB"]
+    Fpocket -->|Selection| Extract["Extract 5Å Shell"]
+    Upload -->|Direct| Clean["Rename Chain to 'p'"]
+    Extract --> Gridbox["Calculate Gridbox (+3Å Buffer)"]
     Clean --> Gridbox
     end
 
     subgraph Step 2: Generation
-    Gridbox -->|Coords & Pocket| Super[Superposer]
-    Super -->|Fragments| Vina1[FrankVINA 1 (Scoring)]
-    Vina1 --> Cluster[Patch Clustering]
-    Cluster --> Vina2[FrankVINA 2 (Refinement)]
+    Gridbox -->|"Coords & Pocket"| Super["Superposer"]
+    Super -->|Fragments| Vina1["FrankVINA 1 (Scoring)"]
+    Vina1 --> Cluster["Patch Clustering"]
+    Cluster --> Vina2["FrankVINA 2 (Refinement)"]
     end
 
     subgraph Step 3: Analysis
-    Vina2 -->|Top Candidates| Seq[Seq Extraction]
-    Seq --> MSA[Multifasta Generation]
-    Seq --> Logo[Sequence Logo Plot]
+    Vina2 -->|"Top Candidates"| Seq["Seq Extraction"]
+    Seq --> MSA["Multifasta Generation"]
+    Seq --> Logo["Sequence Logo Plot"]
     end
 
     subgraph Step 4: Output
-    Logo --> Zip[Zip Results]
+    Logo --> Zip["Zip Results"]
     MSA --> Zip
-    Zip --> Download[Download .zip]
+    Zip --> Download["Download .zip"]
     end
 ```
 
