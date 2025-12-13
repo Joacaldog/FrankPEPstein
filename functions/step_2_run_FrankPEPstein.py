@@ -73,8 +73,35 @@ if not box_center or not box_size:
     box_size = [20.0, 20.0, 20.0]
 
 # --- UI Layout ---
-# Using HTML widget for robust threaded updates
+# Widgets
 out_vis = widgets.HTML(layout={'border': '1px solid #ddd', 'height': '600px', 'width': '100%'})
+
+progress_bar = widgets.FloatProgress(
+    value=0.0,
+    min=0.0,
+    max=100.0,
+    description='Progress:',
+    bar_style='info',
+    style={'bar_color': '#4287f5'},
+    layout=widgets.Layout(width='100%')
+)
+
+status_label = widgets.Label(
+    value="Ready to start...",
+    layout=widgets.Layout(width='100%')
+)
+
+log_output = widgets.Output(
+    layout={'border': '1px solid #ccc', 'height': '200px', 'overflow_y': 'scroll'}
+)
+
+# Container
+ui_container = widgets.VBox([
+    out_vis,
+    widgets.HBox([progress_bar]),
+    status_label,
+    log_output
+])
 
 # --- Logic ---
 
@@ -144,10 +171,9 @@ initial_html = generate_view_html()
 out_vis.value = initial_html
 
 # Display UI immediately
-display(out_vis)
+display(ui_container)
 
-
-# --- Threading ---
+# --- Threading & Execution ---
 stop_event = threading.Event()
 
 def monitor_fragments():
@@ -162,7 +188,8 @@ def monitor_fragments():
             current_count = len(files)
             
             if current_count > last_count:
-                print(f"[Monitor] Updates found! Refreshing 3D View... (Total fragments: {current_count})")
+                # Update Status directly
+                status_label.value = f"New fragments found! Total: {current_count}"
                 
                 # Sort by modification time to show newest first, limit to 50
                 files.sort(key=os.path.getmtime, reverse=True)
@@ -176,23 +203,31 @@ def monitor_fragments():
             if stop_event.is_set(): break
             time.sleep(1)
 
+import re
 
 def run_step_2():
     # Input Validation
+    # We clear the log output for a new run
+    log_output.clear_output()
+    progress_bar.value = 0
+    progress_bar.bar_style = 'info'
+    status_label.value = "Initializing..."
+
     if not receptor_path or not extracted_pocket_path:
-        print("❌ Error: Receptor or Pocket not found. Please run Step 1 successfully.")
+        with log_output:
+            print("❌ Error: Receptor or Pocket not found. Please run Step 1 successfully.")
         return
     if not box_center or not box_size:
-        print("❌ Error: Pocket Gridbox not defined. Please run Step 1 successfully.")
+        with log_output:
+            print("❌ Error: Pocket Gridbox not defined. Please run Step 1 successfully.")
         return
-
-    print(f"--- Starting FrankPEPstein Generation ---")
-    print(f"Peptide Size: {peptide_size}")
-    print(f"Threads: {threads}")
-    print(f"Candidates: {candidates}")
     
+    with log_output:
+        print(f"--- Starting FrankPEPstein Generation ---")
+        print(f"Peptide Size: {peptide_size}")
+        print(f"Threads: {threads}")
+        
     # Determine Python Executable
-    # Try to find the Conda Env python first
     conda_python = "/usr/local/envs/FrankPEPstein/bin/python"
     if os.path.exists(conda_python):
         python_exe = conda_python
@@ -227,24 +262,48 @@ def run_step_2():
             stdout=subprocess.PIPE, 
             stderr=subprocess.STDOUT, 
             text=True, 
-            bufsize=0, # Unbuffered
+            bufsize=1, # Line buffered
             universal_newlines=True
         )
         
-        # Stream output character by character to handle \r (tqdm) correctly
+        # Regex for tqdm: "  10%|#         | 10/100 [00:01<00:09,  9.15it/s]"
+        # We look for a percentage pattern e.g. " 10%" or "100%"
+        tqdm_pattern = re.compile(r'(\d+)%\|.*\| (\d+)/(\d+) \[(.*)\]')
+        
         while True:
-            char = process.stdout.read(1)
-            if not char and process.poll() is not None:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
                 break
-            if char:
-                print(char, end='')
+            if line:
+                # Check for progress bar
+                match = tqdm_pattern.search(line)
+                if match:
+                    # Update Widget
+                    pct = int(match.group(1))
+                    current = match.group(2)
+                    total = match.group(3)
+                    timing = match.group(4)
+                    
+                    progress_bar.value = pct
+                    status_label.value = f"Scaning minipockets: {pct}% ({current}/{total}) - {timing}"
+                else:
+                    # Normal Log
+                    # Filter out empty lines or carriage returns that might look messy
+                    clean_line = line.strip()
+                    if clean_line:
+                        with log_output:
+                            print(clean_line)
             
         process.wait()
-        
         stop_event.set() # Stop monitor
         
         if process.returncode == 0:
-            print("\n✅ Pipeline Finished Successfully.")
+            with log_output:
+                print("\n✅ Pipeline Finished Successfully.")
+            progress_bar.value = 100
+            progress_bar.bar_style = 'success'
+            status_label.value = "Completed Successfully"
+            
             # Final Viz Update
             run_folder_name = "FrankPEPstein_run"
             fragments_dir = os.path.join(initial_path, run_folder_name, "superpockets_residuesAligned3_RMSD0.1")
@@ -252,34 +311,39 @@ def run_step_2():
                 files = glob.glob(os.path.join(fragments_dir, "patch_file_*.pdb"))
                 files.sort(key=os.path.getmtime, reverse=True)
                 out_vis.value = generate_view_html(files[:50])
-                print(f"Final visualization updated with {len(files)} fragments.")
 
         else:
-            print(f"\n❌ Pipeline failed with exit code {process.returncode}")
+            with log_output:
+                print(f"\n❌ Pipeline failed with exit code {process.returncode}")
+            progress_bar.bar_style = 'danger'
+            status_label.value = "Failed"
         
     except KeyboardInterrupt:
-        print("\n🛑 Pipeline interrupted by user.")
+        with log_output:
+            print("\n🛑 Pipeline interrupted by user.")
         stop_event.set()
         if 'process' in locals():
             process.terminate()
         cleanup()
     except Exception as e:
         stop_event.set()
-        print(f"\n❌ Execution Error: {e}")
-        
+        with log_output:
+            print(f"\n❌ Execution Error: {e}")
+            
 def cleanup():
     run_folder_name = "FrankPEPstein_run"
     output_superposer_path = os.path.join(initial_path, run_folder_name, f"superpockets_residuesAligned3_RMSD0.1")
     temp_folder_path = os.path.join(initial_path, run_folder_name, f"temp_folder_residuesAligned3_RMSD0.1")
     
-    if os.path.exists(output_superposer_path):
-        subprocess.run(f"rm -rf {output_superposer_path}", shell=True)
-        print(f"Removed {output_superposer_path}")
-        
-    if os.path.exists(temp_folder_path):
-        subprocess.run(f"rm -rf {temp_folder_path}", shell=True)
-        print(f"Removed {temp_folder_path}")
-    print("Cleanup complete.")
+    with log_output:
+        if os.path.exists(output_superposer_path):
+            subprocess.run(f"rm -rf {output_superposer_path}", shell=True)
+            print(f"Removed {output_superposer_path}")
+            
+        if os.path.exists(temp_folder_path):
+            subprocess.run(f"rm -rf {temp_folder_path}", shell=True)
+            print(f"Removed {temp_folder_path}")
+        print("Cleanup complete.")
 
 if __name__ == "__main__":
     run_step_2()
