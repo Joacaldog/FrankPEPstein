@@ -37,7 +37,6 @@ import re
 
 # --- configuration ---
 detection_mode = "Auto Detect" #@param ["Auto Detect", "Manual Upload"]
-min_alpha_spheres = 35 #@param {type:"integer"}
 
 # Global variables
 receptor_filename = None
@@ -105,7 +104,7 @@ else:
 
     if detection_mode == "Auto Detect":
         try:
-            print(f"Running fpocket on {receptor_filename} using {fpocket_bin} with min alpha spheres={min_alpha_spheres}...")
+            print(f"Running fpocket on {receptor_filename}")
             # Capture output for debugging
             # Using -m to filter small pockets as requested - REMOVED due to user report of bugs
             result = subprocess.run(f"{fpocket_bin} -f '{receptor_filename}'", shell=True, capture_output=True, text=True)
