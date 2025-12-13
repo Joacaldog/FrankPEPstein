@@ -191,10 +191,18 @@ def run_step_2():
     print(f"Threads: {threads}")
     print(f"Candidates: {candidates}")
     
+    # Determine Python Executable
+    # Try to find the Conda Env python first
+    conda_python = "/usr/local/envs/FrankPEPstein/bin/python"
+    if os.path.exists(conda_python):
+        python_exe = conda_python
+    else:
+        python_exe = sys.executable
+
     script_path = os.path.join(repo_folder, "scripts/run_FrankPEPstein.py")
     
     cmd_list = [
-        sys.executable, "-u", script_path,
+        python_exe, "-u", script_path,
         "-w", str(peptide_size),
         "-t", str(threads),
         "-c", str(candidates),
@@ -219,13 +227,17 @@ def run_step_2():
             stdout=subprocess.PIPE, 
             stderr=subprocess.STDOUT, 
             text=True, 
-            bufsize=1, 
+            bufsize=0, # Unbuffered
             universal_newlines=True
         )
         
-        # Stream logs
-        for line in iter(process.stdout.readline, ''):
-            print(line, end='') 
+        # Stream output character by character to handle \r (tqdm) correctly
+        while True:
+            char = process.stdout.read(1)
+            if not char and process.poll() is not None:
+                break
+            if char:
+                print(char, end='')
             
         process.wait()
         
