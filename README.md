@@ -8,10 +8,6 @@
 
 ```mermaid
 graph TD
-    subgraph Step 0: Setup
-    Setup[Install Dependencies & Databases]
-    end
-
     subgraph Step 1: Pocket Processing
     Rec["Receptor PDB"] -->|Input| Detect{"Detection Mode"}
     Detect -->|Auto| Fpocket["fpocket"]
