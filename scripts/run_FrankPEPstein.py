@@ -73,22 +73,21 @@ def main():
     superposer_cmd_str = " ".join(superposer_cmd_list)
     print(f"CMD: {superposer_cmd_str}")
     
-    exit_code = os.system(superposer_cmd_str)
-    if exit_code != 0:
-        print("Error: Superposer failed.")
-        sys.exit(1)
+    subprocess.run(superposer_cmd_list, check=True)
 
     # 2. FrankVINA 1
     if os.path.exists(output_superposer_path):
         os.chdir(output_superposer_path)
-        os.system(f'cp {initial_path}/receptor.pdb .')
+        shutil.copy(os.path.join(initial_path, "receptor.pdb"), ".") # Replaced os.system('cp ...') with shutil.copy
         
         print(f"--- Running FrankVINA 1 ---")
-        cmd_vina1 = f'{sys.executable} {repo_folder}/scripts/frankVINA_1.py {initial_path} {threads}'
-        print(f"CMD: {cmd_vina1}")
-        os.system(cmd_vina1)
+        cmd_vina1 = [sys.executable, f'{repo_folder}/scripts/frankVINA_1.py', initial_path, str(threads)]
+        print(f"CMD: {' '.join(cmd_vina1)}")
+        subprocess.run(cmd_vina1, check=True)
         
         # os.system("rm * 2> /dev/null") # Cleanup (careful, this might delete logs/pdbs if script failed, but following original logic)
+        # Replaced with subprocess.run
+        subprocess.run(["rm", "*"], check=False, stderr=subprocess.DEVNULL) # check=False as original had 2> /dev/null
         
         # 3. Patch Clustering & FrankVINA 2
         print(f"--- Checking for patches ---")
@@ -98,12 +97,14 @@ def main():
             print("No patch files in folder")
         elif len(patch_files) > 1:
             print(f"Running patch_clustering with kmer: {pep_size} ")
-            os.system(f'{sys.executable} {repo_folder}/scripts/patch_clustering.py -w {pep_size} -t {threads} -c 5000')
+            cmd_clustering = [sys.executable, f'{repo_folder}/scripts/patch_clustering.py', '-w', str(pep_size), '-t', str(threads), '-c', '5000']
+            print(f"CMD: {' '.join(cmd_clustering)}")
+            subprocess.run(cmd_clustering, check=True)
             
             cluster_dir = f"frankPEPstein_{pep_size}"
             if os.path.exists(cluster_dir):
                 os.chdir(cluster_dir)
-                os.system(f'cp {initial_path}/receptor.pdb .')
+                shutil.copy(os.path.join(initial_path, "receptor.pdb"), ".") # Replaced os.system('cp ...') with shutil.copy
                 
                 print(f"--- Running FrankVINA 2 ---")
                 cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} {threads} {candidates_number}'

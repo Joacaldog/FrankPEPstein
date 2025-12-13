@@ -1,8 +1,8 @@
 #@title 2. Structure-Guided Peptide Generation
 #@markdown **Instructions:**
-#@markdown 1. Adjust the Gridbox coordinates if needed.
-#@markdown 2. Click **Update View** to see the new box.
-#@markdown 3. Click **Run Generation** to start.
+#@markdown 1. Configure parameters.
+#@markdown 2. Run this cell to start generation.
+#@markdown 3. The 3D view will update every 30 seconds if new fragments are found.
 
 import os
 import sys
@@ -22,7 +22,7 @@ except ImportError:
     subprocess.run("pip install -q py3dmol", shell=True)
     import py3Dmol
 
-# --- Parameters (Defaults) ---
+# --- Parameters ---
 peptide_size = 8 #@param {type:"slider", min:5, max:15, step:1}
 threads = 0 #@param {type:"integer"}
 if threads <= 0:
@@ -64,62 +64,30 @@ if os.path.exists(standard_pocket_path):
 else:
     extracted_pocket_path = pipeline_state.get("extracted_pocket_path", None)
 
-box_center_init = pipeline_state.get("box_center", [0.0, 0.0, 0.0])
-box_size_init = pipeline_state.get("box_size", [20.0, 20.0, 20.0])
+box_center = pipeline_state.get("box_center", [0.0, 0.0, 0.0])
+box_size = pipeline_state.get("box_size", [20.0, 20.0, 20.0])
 
-if not box_center_init: box_center_init = [0.0, 0.0, 0.0]
-if not box_size_init: box_size_init = [20.0, 20.0, 20.0]
+if not box_center or not box_size:
+    # Fallback to defaults if missing (shouldn't happen if Step 1 ran)
+    box_center = [0.0, 0.0, 0.0]
+    box_size = [20.0, 20.0, 20.0]
 
-# --- Widgets ---
-style = {'description_width': 'initial'}
-layout_half = widgets.Layout(width='48%')
-
-# Box Center Widgets
-w_xc = widgets.FloatText(value=box_center_init[0], description='Center X:', style=style, layout=layout_half)
-w_yc = widgets.FloatText(value=box_center_init[1], description='Center Y:', style=style, layout=layout_half)
-w_zc = widgets.FloatText(value=box_center_init[2], description='Center Z:', style=style, layout=layout_half)
-
-# Box Size Widgets
-w_xs = widgets.FloatText(value=box_size_init[0], description='Size X:', style=style, layout=layout_half)
-w_ys = widgets.FloatText(value=box_size_init[1], description='Size Y:', style=style, layout=layout_half)
-w_zs = widgets.FloatText(value=box_size_init[2], description='Size Z:', style=style, layout=layout_half)
-
-btn_update = widgets.Button(description='Update View', button_style='info', icon='refresh')
-btn_run = widgets.Button(description='Run Generation', button_style='success', icon='play')
-btn_stop = widgets.Button(description='Stop & Reset', button_style='danger', icon='stop')
-
-# Use HTML widget for robust threaded updates
+# --- UI Layout ---
+# Using HTML widget for robust threaded updates
 out_vis = widgets.HTML(layout={'border': '1px solid #ddd', 'height': '600px', 'width': '100%'})
-out_log = widgets.Output(layout={'border': '1px solid #ccc', 'height': '300px', 'overflow_y': 'scroll'})
-
-# Grouping
-box_ui = widgets.VBox([
-    widgets.Label("Gridbox Parameters:"),
-    widgets.HBox([w_xc, w_xs]),
-    widgets.HBox([w_yc, w_ys]),
-    widgets.HBox([w_zc, w_zs]),
-    btn_update
-])
-
-main_ui = widgets.VBox([
-    box_ui,
-    widgets.HBox([btn_run, btn_stop]),
-    out_vis,
-    out_log
-])
 
 # --- Logic ---
 
-def draw_view(extra_pdbs=None):
+def generate_view_html(extra_pdbs=None):
     try:
         view = py3Dmol.view(width=800, height=600)
         
-        # 1. Receptor
+        # 1. Receptor (0.85 opacity as requested)
         if receptor_path and os.path.exists(receptor_path):
             with open(receptor_path, 'r') as f:
                 view.addModel(f.read(), "pdb")
             view.setStyle({'model': -1}, {})
-            view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'})
+            view.addSurface(py3Dmol.SES, {'opacity': 0.85, 'color': 'white'})
             
         # 2. Pocket
         if extracted_pocket_path and os.path.exists(extracted_pocket_path):
@@ -127,19 +95,16 @@ def draw_view(extra_pdbs=None):
                 view.addModel(f.read(), "pdb")
             view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.6}})
 
-        # 3. Gridbox (From Widgets)
-        try:
-            cx, cy, cz = float(w_xc.value), float(w_yc.value), float(w_zc.value)
-            sx, sy, sz = float(w_xs.value), float(w_ys.value), float(w_zs.value)
-            
+        # 3. Gridbox
+        if box_center and box_size:
+            cx, cy, cz = box_center
+            sx, sy, sz = box_size
             view.addBox({
                 'center': {'x': cx, 'y': cy, 'z': cz},
                 'dimensions': {'w': sx, 'h': sy, 'd': sz},
                 'color': 'red',
                 'opacity': 0.5
             })
-        except ValueError:
-            pass # Handle transient empty widget values
 
         # 4. Extra Fragments (Live Updates)
         if extra_pdbs:
@@ -150,18 +115,20 @@ def draw_view(extra_pdbs=None):
                      view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon', 'radius': 0.15}})
 
         view.zoomTo()
-        
-        # Set HTML content directly - Thread Safe for Widget property
-        out_vis.value = view._make_html()
+        return view._make_html()
         
     except Exception as e:
-        # Avoid printing to stdout during viz loop to prevent interfering with tqdm
-        pass
+        return f"<b>Viz Error:</b> {e}"
 
-def on_update_click(b):
-    draw_view()
+# Initial view
+initial_html = generate_view_html()
+out_vis.value = initial_html
 
-# --- Visualization Monitor Thread ---
+# Display UI immediately
+display(out_vis)
+
+
+# --- Threading ---
 stop_event = threading.Event()
 
 def monitor_fragments():
@@ -172,113 +139,103 @@ def monitor_fragments():
     
     while not stop_event.is_set():
         if os.path.exists(fragments_dir):
-            # Look for patch files
             files = glob.glob(os.path.join(fragments_dir, "patch_file_*.pdb"))
             current_count = len(files)
             
             if current_count > last_count:
-                # Update View with new files (Limit to last 50 to avoid lag)
-                # Sort by modification time to show newest
-                files.sort(key=os.path.getmtime, reverse=True)
-                draw_view(files[:50])
-                last_count = current_count
+                print(f"[Monitor] Updates found! Refreshing 3D View... (Total fragments: {current_count})")
                 
-        time.sleep(2)
+                # Sort by modification time to show newest first, limit to 50
+                files.sort(key=os.path.getmtime, reverse=True)
+                new_html = generate_view_html(files[:50])
+                out_vis.value = new_html
+                
+                last_count = current_count
+        
+        # Check stop event every 1s, but wait 30s total interval
+        for _ in range(30):
+            if stop_event.is_set(): break
+            time.sleep(1)
 
 
-def on_run_click(b):
-    out_log.clear_output()
-    btn_run.disabled = True
-    btn_update.disabled = True
+def run_step_2():
+    # Input Validation
+    if not receptor_path or not extracted_pocket_path:
+        print("❌ Error: Receptor or Pocket not found. Please run Step 1 successfully.")
+        return
+    if not box_center or not box_size:
+        print("❌ Error: Pocket Gridbox not defined. Please run Step 1 successfully.")
+        return
+
+    print(f"--- Starting FrankPEPstein Generation ---")
+    print(f"Peptide Size: {peptide_size}")
+    print(f"Threads: {threads}")
+    print(f"Candidates: {candidates}")
+    
+    script_path = os.path.join(repo_folder, "scripts/run_FrankPEPstein.py")
+    
+    cmd_list = [
+        sys.executable, "-u", script_path,
+        "-w", str(peptide_size),
+        "-t", str(threads),
+        "-c", str(candidates),
+        "-xc", str(box_center[0]),
+        "-yc", str(box_center[1]),
+        "-zc", str(box_center[2]),
+        "-xs", str(box_size[0]),
+        "-ys", str(box_size[1]),
+        "-zs", str(box_size[2])
+    ]
+    
+    global process
     stop_event.clear()
     
     # Start Monitor Thread
     t = threading.Thread(target=monitor_fragments, daemon=True)
     t.start()
     
-    with out_log:
-        # Input Validation
-        if not receptor_path or not extracted_pocket_path:
-            print("❌ Error: Receptor or Pocket not found. Please run Step 1 successfully.")
-            btn_run.disabled = False
-            return
-
-        box_center = [w_xc.value, w_yc.value, w_zc.value]
-        box_size = [w_xs.value, w_ys.value, w_zs.value]
-
-        print(f"--- Starting FrankPEPstein Generation ---")
-        print(f"Peptide Size: {peptide_size}")
-        print(f"Threads: {threads}")
-        print(f"Candidates: {candidates}")
-        print(f"Gridbox Center: {box_center}")
-        print(f"Gridbox Size: {box_size}")
+    try:
+        process = subprocess.Popen(
+            cmd_list, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT, 
+            text=True, 
+            bufsize=1, 
+            universal_newlines=True
+        )
         
-        script_path = os.path.join(repo_folder, "scripts/run_FrankPEPstein.py")
+        # Stream logs
+        for line in iter(process.stdout.readline, ''):
+            print(line, end='') 
+            
+        process.wait()
         
-        cmd_list = [
-            sys.executable, "-u", script_path,
-            "-w", str(peptide_size),
-            "-t", str(threads),
-            "-c", str(candidates),
-            "-xc", str(box_center[0]),
-            "-yc", str(box_center[1]),
-            "-zc", str(box_center[2]),
-            "-xs", str(box_size[0]),
-            "-ys", str(box_size[1]),
-            "-zs", str(box_size[2])
-        ]
+        stop_event.set() # Stop monitor
         
-        global process
-        try:
-            process = subprocess.Popen(
-                cmd_list, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.STDOUT, 
-                text=True, 
-                bufsize=1, 
-                universal_newlines=True
-            )
-            
-            # Streaming loop
-            for line in iter(process.stdout.readline, ''):
-                print(line, end='') 
-                
-            process.wait()
-            
-            # Stop monitoring
-            stop_event.set()
-            
-            if process.returncode == 0:
-                print("\n✅ Pipeline Finished Successfully.")
-                # Final Viz Check
-                monitor_fragments() # One last update
-            else:
-                print(f"\n❌ Pipeline failed with exit code {process.returncode}")
-            
-        except KeyboardInterrupt:
-            stop_event.set()
-            print("\n🛑 Pipeline interrupted.")
-        except Exception as e:
-            stop_event.set()
-            print(f"\n❌ Execution Error: {e}")
-        finally:
-            stop_event.set()
-            btn_run.disabled = False
-            btn_update.disabled = False
+        if process.returncode == 0:
+            print("\n✅ Pipeline Finished Successfully.")
+            # Final Viz Update
+            run_folder_name = "FrankPEPstein_run"
+            fragments_dir = os.path.join(initial_path, run_folder_name, "superpockets_residuesAligned3_RMSD0.1")
+            if os.path.exists(fragments_dir):
+                files = glob.glob(os.path.join(fragments_dir, "patch_file_*.pdb"))
+                files.sort(key=os.path.getmtime, reverse=True)
+                out_vis.value = generate_view_html(files[:50])
+                print(f"Final visualization updated with {len(files)} fragments.")
 
-def on_stop_click(b):
-    stop_event.set()
-    global process
-    if 'process' in globals() and process:
-         process.terminate()
-         
-    with out_log:
-        print("\n🛑 Stopped by user. Cleaning up...")
+        else:
+            print(f"\n❌ Pipeline failed with exit code {process.returncode}")
+        
+    except KeyboardInterrupt:
+        print("\n🛑 Pipeline interrupted by user.")
+        stop_event.set()
+        if 'process' in locals():
+            process.terminate()
         cleanup()
-    
-    btn_run.disabled = False
-    btn_update.disabled = False
-
+    except Exception as e:
+        stop_event.set()
+        print(f"\n❌ Execution Error: {e}")
+        
 def cleanup():
     run_folder_name = "FrankPEPstein_run"
     output_superposer_path = os.path.join(initial_path, run_folder_name, f"superpockets_residuesAligned3_RMSD0.1")
@@ -286,16 +243,12 @@ def cleanup():
     
     if os.path.exists(output_superposer_path):
         subprocess.run(f"rm -rf {output_superposer_path}", shell=True)
-        # print(f"Removed {output_superposer_path}")
+        print(f"Removed {output_superposer_path}")
         
     if os.path.exists(temp_folder_path):
         subprocess.run(f"rm -rf {temp_folder_path}", shell=True)
-        # print(f"Removed {temp_folder_path}")
+        print(f"Removed {temp_folder_path}")
+    print("Cleanup complete.")
 
-btn_update.on_click(on_update_click)
-btn_run.on_click(on_run_click)
-btn_stop.on_click(on_stop_click)
-
-# Initial Draw
-display(main_ui)
-draw_view()
+if __name__ == "__main__":
+    run_step_2()

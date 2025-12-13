@@ -74,9 +74,24 @@ Click the download button to get a ZIP file containing:
 You can run the pipeline locally using `scripts/run_local.py`.
 
 ### Prerequisites
-*   Linux environment.
+*   Linux environment with `conda` or `mamba`.
 *   Python 3.10+.
-*   Databases installed in `DB/` and utilities in `utilities/` (mimicking the repo structure).
+
+### Setup
+
+Run the following script to create the environment, download databases, and configure tools:
+
+```bash
+python3 scripts/setup_local.py
+```
+
+Arguments:
+*   `--key`: Modeller license key (default: 'MODELIRANJE').
+
+Then activate the environment:
+```bash
+conda activate FrankPEPstein
+```
 
 ### Usage
 
