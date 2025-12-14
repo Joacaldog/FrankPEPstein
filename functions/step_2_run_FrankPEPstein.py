@@ -137,7 +137,7 @@ ui_container = widgets.VBox([
 
 def generate_view_html(extra_pdbs=None):
     try:
-        view = py3Dmol.view(width=800, height=600)
+        view = py3Dmol.view(width=800, height=600, js='https://3dmol.org/build/3Dmol.js')
         
         # REMOVED: Receptor and Gridbox as requested by user to prevent crashes/load
             
