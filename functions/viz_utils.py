@@ -79,7 +79,8 @@ def render_static_view(receptor_path, pocket_path, box_center, box_size, fragmen
     pocket_atoms = get_atom_data(pocket_path)
     if not pocket_atoms: return None
     
-    receptor_atoms = get_atom_data(receptor_path)
+    # receptor_atoms = get_atom_data(receptor_path) # Disabled for speed
+    receptor_atoms = []
     
     # 2. Calculate Alignment (Focus on Pocket)
     rot_matrix, center = align_perspective(pocket_atoms)
@@ -131,28 +132,16 @@ def render_static_view(receptor_path, pocket_path, box_center, box_size, fragmen
             'color': 'red', 'width': 3
         })
         
-    # B. Receptor & Pocket (Surfaces)
-    # We use circles. 
-    for atom in r_aligned:
-        # Check if in view? Optimization: Distance from origin (pocket center)
-        # Zoom factor logic: box size ~20A. Show maybe 30-40A radius.
-        dist = x = atom['x']**2 + atom['y']**2
-        if dist > 3600: continue # Skip atoms far away (>60A) optimization
-        
-        # Color: White
-        render_queue.append({
-            'type': 'atom', 'z': atom['z'],
-            'x': atom['x'], 'y': atom['y'],
-            'r': 120, # Size depends on zoom. Fixed for now.
-            'c': 'white', 'alpha': 0.8
-        })
+    # B. Pocket (Surfaces)
+    # Receptor commented out for speed
+    # for atom in r_aligned: ...
         
     for atom in p_aligned:
         render_queue.append({
             'type': 'atom', 'z': atom['z'],
             'x': atom['x'], 'y': atom['y'],
             'r': 130, # Slightly larger/different
-            'c': 'orange', 'alpha': 0.6
+            'c': 'white', 'alpha': 0.8
         })
 
     # C. Fragments (Sticks)
