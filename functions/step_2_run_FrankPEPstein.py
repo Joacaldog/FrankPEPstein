@@ -17,11 +17,24 @@ from IPython.display import display
 
 # Import Viz Utils
 try:
-    from functions import viz_utils
-except ImportError:
-    # Fallback if running directly or path issues
-    sys.path.append(os.path.dirname(__file__))
+    # Try direct import (if functions is in path)
     import viz_utils
+except ImportError:
+    # Try adding likely paths relative to CWD (Colab root)
+    # Repo structure: /content/FrankPEPstein/functions/viz_utils.py
+    possible_paths = [
+        os.path.join(os.getcwd(), "FrankPEPstein", "functions"),
+        os.path.join(os.getcwd(), "functions"),
+    ]
+    for p in possible_paths:
+        if os.path.exists(p) and p not in sys.path:
+            sys.path.append(p)
+            
+    try:
+        import viz_utils
+    except ImportError:
+        print("⚠️ Warning: viz_utils not found. Visualization will be disabled.")
+        viz_utils = None
 
 # --- Dependency Check ---
 try:
