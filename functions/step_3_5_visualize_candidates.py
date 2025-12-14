@@ -1,4 +1,8 @@
 
+#@title 3.5. Visualize Peptide Candidates
+#@markdown **Instructions:**
+#@markdown Run this cell to visualize the final receptor-pocket-peptide candidates in 3D.
+
 import os
 import glob
 import json
@@ -113,7 +117,13 @@ def visualize_candidates():
             view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon', 'radius': 0.2}})
 
         view.zoomTo()
-        return view.show()
+        # IMPORTANT: in Colab view.show() displays the widget.
+        # But we want to return it or display it here.
+        # Calling view.show() returns None but displays.
+        view.show()
         
     except Exception as e:
         print(f"Visualization Error: {e}")
+
+if __name__ == "__main__":
+    visualize_candidates()
