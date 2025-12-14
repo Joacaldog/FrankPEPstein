@@ -150,9 +150,35 @@ def setup_external_tools(files_id=None):
         if os.path.exists(adfr_extracted) and not os.path.exists(adfr_target):
              print(f"Renaming {adfr_extracted} to {adfr_target}...")
              os.rename(adfr_extracted, adfr_target)
+        
+        # [ADDED] Patch ADFR scripts with current path (fix hardcoded /home/joacaldo paths)
+        if os.path.exists(adfr_target):
+             print("Patching ADFR scripts paths...")
+             bin_dir = os.path.join(adfr_target, "bin")
+             abs_adfr_path = os.path.abspath(adfr_target)
+             for fname in os.listdir(bin_dir):
+                 fpath = os.path.join(bin_dir, fname)
+                 if os.path.isfile(fpath) and not os.path.islink(fpath):
+                     try:
+                         # Read (ignore errors for binaries)
+                         with open(fpath, 'rb') as f:
+                             content_bytes = f.read()
+                         
+                         # Check if text file (shebang or ADS_ROOT)
+                         try:
+                             content = content_bytes.decode('utf-8')
+                             if "ADS_ROOT=" in content:
+                                 import re
+                                 # Replace ADS_ROOT="..." with correct path
+                                 new_content = re.sub(r'ADS_ROOT="[^"]+"', f'ADS_ROOT="{abs_adfr_path}"', content)
+                                 with open(fpath, 'w') as f:
+                                     f.write(new_content)
+                         except UnicodeDecodeError:
+                             pass # Binary file
+                     except Exception as e:
+                         pass
              
-             
-        # if os.path.exists(utilities_dir): # REMOVED redundant line causing indent error
+         # if os.path.exists(utilities_dir): # REMOVED redundant line causing indent error
         print("Fixing permissions...")
         subprocess.run(f"chmod -R +x {utilities_dir}", shell=True)
         
