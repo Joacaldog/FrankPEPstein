@@ -15,6 +15,14 @@ import multiprocessing
 import ipywidgets as widgets
 from IPython.display import display
 
+# Import Viz Utils
+try:
+    from functions import viz_utils
+except ImportError:
+    # Fallback if running directly or path issues
+    sys.path.append(os.path.dirname(__file__))
+    import viz_utils
+
 # --- Dependency Check ---
 try:
     import py3Dmol
@@ -40,7 +48,7 @@ state_file = "pipeline_state.json"
 def fix_permissions():
     executables = [
         f"{repo_folder}/utilities/vina_1.2.4_linux_x86_64",
-        f"{os.getcwd()}/utilities/click/click"
+        f"{initial_path}/utilities/click/click"
     ]
     for exe in executables:
         if os.path.exists(exe):
@@ -104,7 +112,10 @@ if not box_center or not box_size:
 
 # --- UI Layout ---
 # Widgets
-out_vis = widgets.HTML(layout={'border': '1px solid #ddd', 'height': '600px', 'width': '100%'})
+# REPLACED: HTML with Image for static Matplotlib rendering
+out_vis = widgets.Image(
+    layout=widgets.Layout(border='1px solid #ddd', height='500px', width='600px')
+)
 
 progress_bar = widgets.FloatProgress(
     value=0.0,
@@ -127,7 +138,7 @@ log_output = widgets.Output(
 
 # Container
 ui_container = widgets.VBox([
-    out_vis,
+    widgets.HBox([out_vis], layout=widgets.Layout(justify_content='center')),
     widgets.HBox([progress_bar]),
     status_label,
     log_output
@@ -135,45 +146,31 @@ ui_container = widgets.VBox([
 
 # --- Logic ---
 
-def generate_view_html(extra_pdbs=None):
+def update_static_viz(extra_pdbs=None, title="Pipeline Running..."):
     try:
-        view = py3Dmol.view(width=800, height=600, js='https://3dmol.org/build/3Dmol.js')
-        
-        # REMOVED: Receptor and Gridbox as requested by user to prevent crashes/load
-            
-        # 1. Pocket (Only show pocket)
         if extracted_pocket_path and os.path.exists(extracted_pocket_path):
-            with open(extracted_pocket_path, 'r') as f:
-                view.addModel(f.read(), "pdb")
-            view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.6}})
-
-        # 2. Extra Fragments (Live Updates)
-        if extra_pdbs:
-            for pdb_file in extra_pdbs:
-                 if os.path.exists(pdb_file):
-                     with open(pdb_file, 'r') as f:
-                         view.addModel(f.read(), "pdb")
-                     view.setStyle({'model': -1}, {'stick': {'colorscheme': 'greenCarbon', 'radius': 0.15}})
-
-        view.zoomTo()
-        return view._make_html()
-        
+            img_bytes = viz_utils.render_static_view(
+                extracted_pocket_path, 
+                extra_pdbs if extra_pdbs else [],
+                title=title
+            )
+            if img_bytes:
+                out_vis.value = img_bytes
     except Exception as e:
-        return f"<b>Viz Error:</b> {e}"
+        # Fail silently visually, log if needed
+        pass
 
 # Initial view
-initial_html = generate_view_html()
-out_vis.value = initial_html
-
-# Display UI immediately
+update_static_viz(title="Ready")
 display(ui_container)
 
 # --- Threading & Execution ---
 stop_event = threading.Event()
+pipeline_phase = "Initializing"
 
 def monitor_fragments():
     run_folder_name = "FrankPEPstein_run"
-    fragments_dir = os.path.join(os.getcwd(), run_folder_name, "superpockets_residuesAligned3_RMSD0.1")
+    fragments_dir = os.path.join(initial_path, run_folder_name, "superpockets_residuesAligned3_RMSD0.1")
     
     last_count = 0
     
@@ -182,31 +179,32 @@ def monitor_fragments():
             files = glob.glob(os.path.join(fragments_dir, "patch_file_*.pdb"))
             current_count = len(files)
             
+            # We update periodically regardless of new files to ensure phase title is current
+            # Sort by modification time to show newest first, limit to more if static (it's fast)
+            files.sort(key=os.path.getmtime, reverse=True)
+            
+            # Pass top 100 fragments
+            update_static_viz(files[:100], title=f"{pipeline_phase} (Fragments: {current_count})")
+            
             if current_count > last_count:
-                # Update Status directly
-                status_label.value = f"New fragments found! Total: {current_count}"
-                
-                # Sort by modification time to show newest first, limit to 50
-                files.sort(key=os.path.getmtime, reverse=True)
-                new_html = generate_view_html(files[:50])
-                out_vis.value = new_html
-                
                 last_count = current_count
         
-        # Check stop event every 1s, but wait 30s total interval
-        for _ in range(30):
+        # Check stop event every 1s, but wait 10s total interval (faster update for static image)
+        for _ in range(10):
             if stop_event.is_set(): break
             time.sleep(1)
 
 import re
 
 def run_step_2():
+    global pipeline_phase
     # Input Validation
     # We clear the log output for a new run
     log_output.clear_output()
     progress_bar.value = 0
     progress_bar.bar_style = 'info'
     status_label.value = "Initializing..."
+    pipeline_phase = "Initializing"
     
     # 0. Fix Modeller License
     with log_output:
@@ -255,6 +253,7 @@ def run_step_2():
     
     global process
     stop_event.clear()
+    pipeline_phase = "Scanning minipockets" # Default start
     
     # Start Monitor Thread
     t = threading.Thread(target=monitor_fragments, daemon=True)
@@ -279,6 +278,25 @@ def run_step_2():
             if not line and process.poll() is not None:
                 break
             if line:
+                clean_line = line.strip()
+                
+                # Check for Phase Markers
+                if "--- Running Superposer ---" in clean_line:
+                    pipeline_phase = "Scanning minipockets"
+                    status_label.value = pipeline_phase
+                elif "--- Running FrankVINA 1 ---" in clean_line:
+                    pipeline_phase = "Selecting fragment candidates"
+                    status_label.value = pipeline_phase
+                    progress_bar.bar_style = 'warning' # Change color to indicate change
+                elif "--- Checking for patches ---" in clean_line:
+                    pipeline_phase = "Clustering fragments and obtaining combinations of peptides"
+                    status_label.value = pipeline_phase
+                    progress_bar.bar_style = 'info'
+                elif "--- Running FrankVINA 2 ---" in clean_line:
+                    pipeline_phase = "Refining peptide candidates and selecting"
+                    status_label.value = pipeline_phase
+                    progress_bar.bar_style = 'success'
+
                 # Check for progress bar
                 match = tqdm_pattern.search(line)
                 if match:
@@ -289,11 +307,9 @@ def run_step_2():
                     timing = match.group(4)
                     
                     progress_bar.value = pct
-                    status_label.value = f"Scaning minipockets: {pct}% ({current}/{total}) - {timing}"
+                    status_label.value = f"{pipeline_phase}: {pct}% ({current}/{total}) - {timing}"
                 else:
                     # Normal Log
-                    # Filter out empty lines or carriage returns that might look messy
-                    clean_line = line.strip()
                     if clean_line:
                         with log_output:
                             print(clean_line)
@@ -309,12 +325,8 @@ def run_step_2():
             status_label.value = "Completed Successfully"
             
             # Final Viz Update
-            run_folder_name = "FrankPEPstein_run"
-            fragments_dir = os.path.join(initial_path, run_folder_name, "superpockets_residuesAligned3_RMSD0.1")
-            if os.path.exists(fragments_dir):
-                files = glob.glob(os.path.join(fragments_dir, "patch_file_*.pdb"))
-                files.sort(key=os.path.getmtime, reverse=True)
-                out_vis.value = generate_view_html(files[:50])
+            pipeline_phase = "Completed"
+            monitor_fragments() # One last update calls update_static_viz
 
         else:
             with log_output:
