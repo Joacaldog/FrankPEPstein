@@ -11,6 +11,7 @@ def main():
     parser.add_argument("-w", "--pep_size", type=int, default=8, help="Peptide size (kmer)")
     parser.add_argument("-t", "--threads", type=int, default=36, help="Number of threads")
     parser.add_argument("-c", "--candidates", type=int, default=10, help="Number of candidates for Step 2")
+    parser.add_argument("-s", "--sampling", type=int, default=500, help="Subsampling limit for Vina screening")
     
     # Gridbox Parameters (Required for superposer)
     parser.add_argument("-xc", "--x_center", type=float, required=True, help="Resulting box center X")
@@ -30,7 +31,7 @@ def main():
     repo_folder = os.path.join(initial_path, "FrankPEPstein")
     
     # DB Paths
-    minipockets_folder = os.path.join(initial_path, "DB/minipockets_surface80_winsize3_size3_curated-db")
+    minipockets_folder = os.path.join(initial_path, "DB/minipockets_surface80_winsize3_size3")
     db_folder = os.path.join(initial_path, "DB/filtered_DB_P5-15_R30_id10")
     
     # Pocket Path (Now in FrankPEPstein_run due to refactor)
@@ -109,7 +110,7 @@ def main():
                 shutil.copy(pocket_pdb, ".") # Modified: Copy pocket instead of receptor for VINA 2 speedup
                 
                 print(f"--- Running FrankVINA 2 ---")
-                cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} {threads} {candidates_number}'
+                cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} {threads} {candidates_number} {args.sampling}'
                 print(f"CMD: {cmd_vina2}")
                 os.system(cmd_vina2)
                 

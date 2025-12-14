@@ -20,8 +20,10 @@ initial_path = sys.argv[1]
 receptor_file = "pocket.pdb"
 threads = sys.argv[2]
 selected_peps = int(sys.argv[3])
-
-# [ADDED] ADFR Configuration
+try:
+    MAX_PEPTIDES = int(sys.argv[4])
+except IndexError:
+    MAX_PEPTIDES = 500 # Default if not provided
 ADFR_DIR = os.path.join(initial_path, "utilities/ADFRsuite_x86_64Linux_1.0")
 ADFR_BIN = os.path.join(ADFR_DIR, "bin")
 ADFR_LIB = os.path.join(ADFR_DIR, "lib")
@@ -182,8 +184,12 @@ def main():
     all_files = os.listdir(".")
     frag_files = [f for f in all_files if fnmatch.fnmatch(f, 'frag*.pdb')]
 
-    # Si hay más de 1000, hacemos una muestra aleatoria
+    total_combinations = len(frag_files)
+    print(f"Total Combinations Found: {total_combinations}")
+
+    # Si hay más de MAX_PEPTIDES, hacemos una muestra aleatoria
     if len(frag_files) > MAX_PEPTIDES:
+        print(f"Subsampling to {MAX_PEPTIDES} for processing speed...")
         frag_files = random.sample(frag_files, MAX_PEPTIDES)
     
     # Resto de archivos se ignoran, solo procesamos la muestra

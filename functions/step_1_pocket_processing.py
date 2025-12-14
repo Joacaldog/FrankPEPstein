@@ -369,7 +369,7 @@ def create_control_group(label, initial_val, step, color_hex):
     Returns: value_widget, minus_btn, plus_btn, container
     """
     # Style buttons
-    btn_layout = widgets.Layout(width='30px')
+    btn_layout = widgets.Layout(width='40px')
     # Using 'info' or 'primary' doesn't give custom colors easily in standard buttons without style attributes
     # We will use the container border/label to indicate color.
     
@@ -378,13 +378,15 @@ def create_control_group(label, initial_val, step, color_hex):
     
     # Custom coloring for buttons is tricky in basic ipywidgets without custom CSS.
     # We'll use the button_style for generic look, but wrap in a colored box.
-    # User requested ARROWS because text was invisible.
+    # User requested ARROWS. FontAwesome icons failed to load. Using Unicode.
     
-    minus_button = widgets.Button(icon='arrow-left', layout=btn_layout)
-    plus_button = widgets.Button(icon='arrow-right', layout=btn_layout)
+    minus_button = widgets.Button(description='◀', layout=btn_layout)
+    plus_button = widgets.Button(description='▶', layout=btn_layout)
     
-    minus_button.style.button_color = '#e0e0e0'
-    plus_button.style.button_color = '#e0e0e0'
+    # minus_button.style.button_color = '#e0e0e0' # Causing contrast issues in dark mode
+    # plus_button.style.button_color = '#e0e0e0'
+    
+    val_widget = widgets.FloatText(value=initial_val, step=step, description='', layout=widgets.Layout(width='80px'))
     
     def on_minus(b):
         val_widget.value -= step

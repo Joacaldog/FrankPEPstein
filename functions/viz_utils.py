@@ -253,7 +253,7 @@ def render_static_view(receptor_path, pocket_path, box_center, box_size, fragmen
     
     for item in render_queue:
         if item['type'] == 'atom':
-            ax.scatter(item['x'], item['y'], s=item['r'], c=item['c'], alpha=item['alpha'], edgecolors='none')
+            ax.scatter(item['x'], item['y'], s=item['r'], color=item['c'], alpha=item['alpha'], edgecolors='none')
         elif item['type'] == 'line':
             ax.plot(item['x'], item['y'], c=item['color'], linewidth=item['width'], alpha=0.8)
 

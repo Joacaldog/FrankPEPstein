@@ -49,6 +49,8 @@ threads = 0 #@param {type:"integer"}
 if threads <= 0:
     threads = multiprocessing.cpu_count()
 candidates = 10 #@param {type:"integer"}
+sampling_limit = 500 #@param {type:"integer"}
+#@markdown *Subsampling limit (peptides to simulate). Total combinations are usually much higher; we sample for speed.*
 modeller_key = 'MODELIRANJE'
 
 
@@ -266,7 +268,8 @@ def run_step_2():
         "-zc", str(box_center[2]),
         "-xs", str(box_size[0]),
         "-ys", str(box_size[1]),
-        "-zs", str(box_size[2])
+        "-zs", str(box_size[2]),
+        "-s", str(sampling_limit)
     ]
     
     global process
