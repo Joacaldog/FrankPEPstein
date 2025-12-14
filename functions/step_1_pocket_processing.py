@@ -232,21 +232,19 @@ else:
         print("No pockets available to select.")
 
 #@title 4. Pocket Extraction, Manual Adjustment & Box Generation
-#@markdown This step calculates the initial box, allows manual adjustment, and then extracts the final pocket.
+#@markdown This step calculates the initial box, allows manual adjustment with +/- buttons, and then extracts the final pocket.
 
 import os
 import subprocess
 import sys
 import ipywidgets as widgets
-from IPython.display import display
+from IPython.display import display, clear_output
 
 # --- Helper Functions (Subprocess) ---
 def run_processing_isolated(receptor_path, pocket_path, output_pocket_path, mode="extract", buffer=0.0):
     """
     Runs extraction/processing and box calculation in isolated environment.
-    Mode: "extract" (Fpocket: 5A NeighborSearch) or "direct" (Manual: Load & Box only)
     """
-    
     script_content = f"""
 import sys
 import os
@@ -262,13 +260,11 @@ def process_and_box(receptor_file, pocket_file, output_file, mode, buffer_val):
         
         # Determine atoms for Box Calculation
         atoms_for_box = []
-        residues_for_saving = [] # (chain, res_id)
+        residues_for_saving = [] 
         
-        # 2. Logic based on Mode
         if mode == 'extract':
              # Fpocket mode: Load Receptor, Find Neighbors (5A)
              receptor_struct = parser.get_structure("receptor", receptor_file)
-             
              pocket_atoms = [atom for atom in pocket_struct.get_atoms()]
              if not pocket_atoms:
                  print("ERROR: No atoms in pocket file")
@@ -276,55 +272,43 @@ def process_and_box(receptor_file, pocket_file, output_file, mode, buffer_val):
                  
              receptor_atoms = list(receptor_struct.get_atoms())
              ns = NeighborSearch(receptor_atoms)
-             
              selected_residues = set()
              for p_atom in pocket_atoms:
                  nearby = ns.search(p_atom.get_coord(), 5.0, level='R')
                  for res in nearby:
                      selected_residues.add((res.parent.id, res.id))
             
-             # Save Logic for Extraction
              class PocketSelect(Select):
                  def accept_residue(self, residue):
                      return (residue.parent.id, residue.id) in selected_residues
                      
-             # We save to temp then reload to standardize chain 'p'
              io = PDBIO()
              io.set_structure(receptor_struct)
              temp_out = output_file + ".tmp"
              io.save(temp_out, PocketSelect())
              
-             # Reload temp to get atoms for box
              saved_struct = parser.get_structure("saved", temp_out)
-             
-             # Prepare for Final Save (Rename chain to 'p')
              for model in saved_struct:
                  for chain in model:
                      chain.id = 'p'
                      for residue in chain:
                          for atom in residue:
                              atoms_for_box.append(atom)
-             
              io.set_structure(saved_struct)
              io.save(output_file)
              os.remove(temp_out)
              
         elif mode == 'direct':
-             # Manual mode: Use pocket file directly, just rename chain to 'p'
-             
-             # Collect atoms and rename chain
              for model in pocket_struct:
                  for chain in model:
                      chain.id = 'p'
                      for residue in chain:
                          for atom in residue:
                              atoms_for_box.append(atom)
-             
              io = PDBIO()
              io.set_structure(pocket_struct)
              io.save(output_file)
              
-        # 3. Box Calculation
         if not atoms_for_box:
             print("ERROR: No atoms/residues for box calculation")
             return
@@ -333,10 +317,7 @@ def process_and_box(receptor_file, pocket_file, output_file, mode, buffer_val):
         min_coord = [min([c[i] for c in coords]) for i in range(3)]
         max_coord = [max([c[i] for c in coords]) for i in range(3)]
         
-        # Center
         center = [(min_coord[i] + max_coord[i]) / 2 for i in range(3)]
-        
-        # Size + Buffer (3.0 A as requested)
         size = [(max_coord[i] - min_coord[i]) + float(buffer_val) for i in range(3)]
         
         print(f"CENTER:{{center[0]}},{{center[1]}},{{center[2]}}")
@@ -372,122 +353,193 @@ if __name__ == "__main__":
                 size = [float(x) for x in line.split(":")[1].split(",")]
             elif line.startswith("SUCCESS"):
                 success = True
-            elif line.startswith("ERROR"):
-                print(f"Script Error: {line}")
-                
+            
         return center, size, success
     except subprocess.CalledProcessError as e:
-        print(f"Execution Error: {e.stderr}")
         return None, None, False
 
-# --- UI Widgets ---
+# --- Custom Widget Helpers ---
 
-# Center Widgets
-center_x = widgets.FloatText(description='Center X:', step=0.5)
-center_y = widgets.FloatText(description='Center Y:', step=0.5)
-center_z = widgets.FloatText(description='Center Z:', step=0.5)
+def create_control_group(label, initial_val, step, color_hex):
+    """
+    Creates a [-] [Value] [+] control group.
+    Returns: value_widget, minus_btn, plus_btn, container
+    """
+    # Style buttons
+    btn_layout = widgets.Layout(width='30px')
+    # Using 'info' or 'primary' doesn't give custom colors easily in standard buttons without style attributes
+    # We will use the container border/label to indicate color.
+    
+    minus_button = widgets.Button(description='-', layout=btn_layout)
+    plus_button = widgets.Button(description='+', layout=btn_layout)
+    
+    # Custom coloring for buttons is tricky in basic ipywidgets without custom CSS.
+    # We'll use the button_style for generic look, but wrap in a colored box.
+    # User requested ARROWS because text was invisible.
+    
+    minus_button = widgets.Button(icon='arrow-left', layout=btn_layout)
+    plus_button = widgets.Button(icon='arrow-right', layout=btn_layout)
+    
+    minus_button.style.button_color = '#e0e0e0'
+    plus_button.style.button_color = '#e0e0e0'
+    
+    def on_minus(b):
+        val_widget.value -= step
+        update_visual(None)
+        
+    def on_plus(b):
+        val_widget.value += step
+        update_visual(None)
+            
+    minus_button.on_click(on_minus)
+    plus_button.on_click(on_plus)
+    val_widget.observe(lambda c: update_visual(None) if c['type'] == 'change' and c['name'] == 'value' else None)
 
-# Size Widgets
-size_x = widgets.FloatText(description='Size X:', step=1.0)
-size_y = widgets.FloatText(description='Size Y:', step=1.0)
-size_z = widgets.FloatText(description='Size Z:', step=1.0)
+    # Label styling
+    # We use HTML to color the label text
+    label_html = widgets.HTML(f"<b style='color:{color_hex}; font-size:14px; margin-right:5px;'>{label}</b>")
+    
+    box = widgets.HBox([label_html, minus_button, val_widget, plus_button], layout=widgets.Layout(align_items='center'))
+    return val_widget, box
 
-# Buttons
-init_btn = widgets.Button(description='Uncover Pocket & Init Box', button_style='primary', icon='search')
-view_box_btn = widgets.Button(description='Update Visual', button_style='info', icon='eye')
-confirm_btn = widgets.Button(description='Confirm & Extract', button_style='success', icon='check')
-
-output_log = widgets.Output()
-viz_output = widgets.Output()
+# --- UI State Containers ---
+# We store widgets here to access them in callbacks
+controls = {}
 
 # --- Logic ---
+viz_output = widgets.Output()
+output_log = widgets.Output()
 
-def initialize_box(b):
+def initialize_ui(b):
     output_log.clear_output()
-    with output_log:
-        if 'pocket_dropdown' not in globals() or not pocket_dropdown.value:
-            print("Please select a pocket first.")
-            return
+    viz_output.clear_output()
+    
+    if 'pocket_dropdown' not in globals() or not pocket_dropdown.value:
+        with output_log: print("Please select a pocket first.")
+        return
 
-        selected_pocket = pocket_dropdown.value
-        src_pocket_path = os.path.join(pockets_dir, selected_pocket)
-        # Temporary output just to get coords
-        temp_pocket_path = os.path.join(pockets_dir, "temp_calc.pdb")
-        
-        mode = "extract" if detection_mode == "Auto Detect" else "direct"
-        print(f"Calculating initial box for {selected_pocket}...")
-        
-        center, size, success = run_processing_isolated(
-            receptor_filename, src_pocket_path, temp_pocket_path, mode=mode, buffer=0.0
-        )
-        
-        if success:
-            center_x.value, center_y.value, center_z.value = center
-            size_x.value, size_y.value, size_z.value = size
-            print("Initial calculation successful. Adjust values below if needed.")
-            
-            # Auto-trigger visualization
-            update_visual(None)
-        else:
-            print("Failed to calculate initial box.")
+    # 1. Calc Initial
+    selected_pocket = pocket_dropdown.value
+    src_pocket_path = os.path.join(pockets_dir, selected_pocket)
+    temp_pocket_path = os.path.join(pockets_dir, "temp_calc.pdb")
+    mode = "extract" if detection_mode == "Auto Detect" else "direct"
+    
+    with output_log: print("Checking pocket parameters...")
+    center, size, success = run_processing_isolated(receptor_filename, src_pocket_path, temp_pocket_path, mode=mode)
+    
+    if not success:
+        with output_log: print("Failed calculating defaults.")
+        center = [0.0, 0.0, 0.0]
+        size = [20.0, 20.0, 20.0]
+
+    cx, cy, cz = center
+    sx, sy, sz = size
+
+    # 2. Build Control Rows (Reset controls)
+    # X Axis (Red)
+    cx_w, cx_box = create_control_group("Center X", cx, 0.5, "#FF0000")
+    sx_w, sx_box = create_control_group("Size X  ", sx, 1.0, "#FF0000")
+    
+    # Y Axis (Green)
+    cy_w, cy_box = create_control_group("Center Y", cy, 0.5, "#00AA00")
+    sy_w, sy_box = create_control_group("Size Y  ", sy, 1.0, "#00AA00")
+    
+    # Z Axis (Blue)
+    cz_w, cz_box = create_control_group("Center Z", cz, 0.5, "#0000FF")
+    sz_w, sz_box = create_control_group("Size Z  ", sz, 1.0, "#0000FF")
+
+    # Store for global access
+    controls['cx'] = cx_w; controls['sx'] = sx_w
+    controls['cy'] = cy_w; controls['sy'] = sy_w
+    controls['cz'] = cz_w; controls['sz'] = sz_w
+    
+    # Layout
+    # Organize by Function (Center Col, Size Col) or by Axis (Row X, Row Y)?
+    # User asked for color coding. Row by Axis is cleanest for color grouping.
+    
+    # Header
+    header = widgets.HTML("<h3>Manual Gridbox Adjustment</h3>")
+    
+    row_x = widgets.HBox([cx_box, widgets.HTML("&nbsp;&nbsp;|&nbsp;&nbsp;"), sx_box])
+    row_y = widgets.HBox([cy_box, widgets.HTML("&nbsp;&nbsp;|&nbsp;&nbsp;"), sy_box])
+    row_z = widgets.HBox([cz_box, widgets.HTML("&nbsp;&nbsp;|&nbsp;&nbsp;"), sz_box])
+    
+    ui_container = widgets.VBox([
+        header,
+        widgets.HTML("<hr style='border-top: 1px solid #ccc;'>"),
+        row_x,
+        row_y,
+        row_z,
+        widgets.HTML("<hr style='border-top: 1px solid #ccc;'>"),
+        confirm_btn
+    ])
+    
+    # Display UI
+    with output_log:
+        clear_output()
+        display(ui_container)
+    
+    # Trigger first viz
+    update_visual(None)
+
 
 def update_visual(b):
-    viz_output.clear_output()
+    viz_output.clear_output(wait=True)
     with viz_output:
-        if 'pocket_dropdown' not in globals() or not pocket_dropdown.value:
-            return
-            
-        full_pocket_path = os.path.join(pockets_dir, pocket_dropdown.value)
+        if 'cx' not in controls: return
         
+        # Get Current Values
+        cx = controls['cx'].value; sx = controls['sx'].value
+        cy = controls['cy'].value; sy = controls['sy'].value
+        cz = controls['cz'].value; sz = controls['sz'].value
+        
+        # Load View
         view = py3Dmol.view(width=800, height=600)
         
-        # Loaded Molecule (Recolor for contrast)
-        with open(receptor_filename, 'r') as f:
-            view.addModel(f.read(), "pdb")
-        view.setStyle({'cartoon': {'color': 'white'}})
-        view.addSurface(py3Dmol.SES, {'opacity': 0.1, 'color': 'gray'})
-        
-        # Add Pocket (Red)
-        if os.path.exists(full_pocket_path):
-             with open(full_pocket_path, 'r') as f:
+        # 1. ADD POCKET ONLY
+        # We need the path. Using the one we calculated/detected
+        selected_pocket = pocket_dropdown.value
+        # If 'Auto', we might be using the raw one. If 'Manual', same.
+        # But wait, we want to see the pocket relative to the box.
+        # Ideally we use the 'temp_calc.pdb' if it was valid, or the source.
+        # Let's use source for visualization to avoid confusion
+        src_pocket_path = os.path.join(pockets_dir, selected_pocket)
+        if os.path.exists(src_pocket_path):
+             with open(src_pocket_path, 'r') as f:
                 view.addModel(f.read(), "pdb")
-             view.setStyle({'model': -1}, {'sphere': {'color': 'red', 'opacity': 0.8}})
+             # Show Atoms nicely
+             view.setStyle({'stick':{'colorscheme':'greenCarbon'}})
+             view.addSurface(py3Dmol.SES, {'opacity': 0.6, 'color': 'white'})
         
-        # Add Box
-        cx, cy, cz = center_x.value, center_y.value, center_z.value
-        sx, sy, sz = size_x.value, size_y.value, size_z.value
-        
-        # Py3Dmol doesn't have a direct 'addBox' for just wireframe easily, 
-        # but we can use addShape for a crude box or just lines. 
-        # Using a simple custom representation or just a label if shapes fail.
-        # Actually addBox exists:
-        # addBox({center:{x,y,z}, dimensions: {w,h,d}, color, alpha, wireframe: true})
-        
+        # 2. ADD GRIDBOX
+        # User requested: "caras con colores pero transparente"
         view.addBox({
             'center': {'x': cx, 'y': cy, 'z': cz},
             'dimensions': {'w': sx, 'h': sy, 'd': sz},
-            'color': 'cyan',
-            'opacity': 0.5,
+            'color': 'cyan',   # Single color for the box itself
+            'opacity': 0.4,    # Transparent
+            'wireframe': False # Solid faces
+        })
+        # Add wireframe on top for definition?
+        view.addBox({
+            'center': {'x': cx, 'y': cy, 'z': cz},
+            'dimensions': {'w': sx, 'h': sy, 'd': sz},
+            'color': 'black',
             'wireframe': True
         })
-        
+
         view.zoomTo()
         view.show()
 
 def finalize_process(b):
     output_log.clear_output()
     with output_log:
-        print("Finalizing...")
+        if 'cx' not in controls: return
+        print("Finalizing extraction with custom box...")
         
         # 1. Use user adjusted values
-        final_center = [center_x.value, center_y.value, center_z.value]
-        final_size = [size_x.value, size_y.value, size_z.value]
-        
-        # 2. Re-run or just save? 
-        # We need to re-run the extraction/chain rename steps to be safe and produce the final 'pocket.pdb'
-        # But we already have the box manually. We basically just need to save the PDB properly.
-        # Let's run the standard extraction (to get 'p' chain etc) again to be safe 
-        # and then OVERWRITE the state with our manual box.
+        final_center = [controls['cx'].value, controls['cy'].value, controls['cz'].value]
+        final_size   = [controls['sx'].value, controls['sy'].value, controls['sz'].value]
         
         selected_pocket = pocket_dropdown.value
         src_pocket_path = os.path.join(pockets_dir, selected_pocket)
@@ -496,18 +548,14 @@ def finalize_process(b):
         
         mode = "extract" if detection_mode == "Auto Detect" else "direct"
         
-        # We use buffer=0.0 because we are overriding the box anyway, 
-        # but we need the script to generate the clean PDB file.
+        # Run extraction logic again to ensure clean PDB
         _, _, success = run_processing_isolated(
             receptor_filename, src_pocket_path, final_pocket_path, mode=mode, buffer=0.0
         )
         
         if success:
-            print("-" * 30)
-            print(f"Final Box Center: {final_center}")
-            print(f"Final Box Size:   {final_size}")
-            print("-" * 30)
-            print(f"✅ Created Final Pocket: {final_pocket_path}")
+            print(f"✅ Box Center: {final_center}")
+            print(f"✅ Box Size:   {final_size}")
             
             # Save State
             global box_center, box_size, extracted_pocket_path
@@ -521,35 +569,21 @@ def finalize_process(b):
                 "extracted_pocket_path": extracted_pocket_path
             })
             
-            # Copy to Root
             root_pocket = os.path.join(initial_path, "pocket.pdb")
             try:
                 import shutil
                 shutil.copy(final_pocket_path, root_pocket)
-                print(f"✅ Copied to Root: {root_pocket}")
-            except Exception as e:
-                print(f"Warning: Could not copy to root: {e}")
+                print(f"✅ Ready! (Copied to {root_pocket})")
+            except: pass
         else:
-            print("Error creating final pocket file.")
+            print("Error saving final pocket.")
 
+# Main Buttons
+init_btn = widgets.Button(description='Start Box Adjustment', button_style='primary', icon='edit', layout=widgets.Layout(width='200px'))
+confirm_btn = widgets.Button(description='Confirm & Extract', button_style='success', icon='check', layout=widgets.Layout(width='100%'))
 
-init_btn.on_click(initialize_box)
-view_box_btn.on_click(update_visual)
+init_btn.on_click(initialize_ui)
 confirm_btn.on_click(finalize_process)
 
-# Layout
-ui = widgets.VBox([
-    init_btn,
-    widgets.HBox([
-        widgets.VBox([widgets.Label("Center"), center_x, center_y, center_z]),
-        widgets.VBox([widgets.Label("Size"), size_x, size_y, size_z])
-    ]),
-    view_box_btn,
-    viz_output,
-    widgets.HTML("<hr>"),
-    confirm_btn,
-    output_log
-])
-
 print("\n--- 4. Pocket Processing & Box Calculation ---")
-display(ui)
+display(widgets.VBox([init_btn, viz_output, output_log]))
