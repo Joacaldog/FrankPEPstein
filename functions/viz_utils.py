@@ -184,9 +184,40 @@ def render_static_view(receptor_path, pocket_path, box_center, box_size, fragmen
         render_queue.append({
             'type': 'atom', 'z': atom['z'],
             'x': atom['x'], 'y': atom['y'],
-            'r': 130, # Slightly larger/different
-            'c': 'white', 'alpha': 0.8
+            'r': 130 # Temporarily store raw atom
         })
+        
+    # --- Calc Depth Range for Pocket Atoms ---
+    # We want to normalize Z for color/alpha
+    pocket_items = [i for i in render_queue if i['type']=='atom']
+    if pocket_items:
+        z_vals = [i['z'] for i in pocket_items]
+        z_min, z_max = min(z_vals), max(z_vals)
+        z_range = z_max - z_min if z_max != z_min else 1.0
+        
+        # Apply Depth Cues
+        # User requested: Celeste (Near/Front) -> White (Far/Back)
+        
+        for item in pocket_items:
+            # Normalize 0 (Back/Far) to 1 (Front/Near)
+            norm = (item['z'] - z_min) / z_range
+            
+            # Custom Gradient: White [1,1,1] --> Cyan [0,1,1]
+            # R goes from 1 to 0
+            # G stays 1
+            # B stays 1
+            r = 1.0 - (1.0 * norm)
+            g = 1.0
+            b = 1.0
+            rgba = (r, g, b, 1.0) # Alpha handled separately below
+            
+            # Alpha: Front=0.9, Back=0.3
+            alpha = 0.3 + (0.6 * norm)
+            
+            item['c'] = rgba
+            item['alpha'] = alpha
+            # item['r'] is 130. Slightly larger at front
+            item['r'] = 130 * (0.8 + 0.4*norm)
 
     # C. Fragments (Sticks)
     # Need connectivity. Simple distance check < 1.6A
