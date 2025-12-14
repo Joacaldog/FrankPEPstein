@@ -190,12 +190,28 @@ pipeline_phase = "Initializing"
 
 def monitor_fragments():
     run_folder_name = "FrankPEPstein_run"
-    fragments_dir = os.path.join(initial_path, run_folder_name, "superpockets_residuesAligned3_RMSD0.1")
+    base_run_dir = os.path.join(initial_path, run_folder_name)
+    
+    # Dynamic search for RMSD folder
+    fragments_dir_pattern = os.path.join(base_run_dir, "superpockets_residuesAligned3_RMSD*")
+    fragments_dir = None
+    
+    # We loop to find the dir once it's created
+    # But inside the loop we should keep checking if it changes/appears
+    fragments_dir_candidates = glob.glob(fragments_dir_pattern)
+    if fragments_dir_candidates:
+         fragments_dir = fragments_dir_candidates[0] # Take the first one found
     
     last_count = 0
     
     while not stop_event.is_set():
-        if os.path.exists(fragments_dir):
+        # Keep trying to find the directory if we haven't yet, or if we want to be robust to changes
+        if not fragments_dir:
+            fragments_dir_candidates = glob.glob(fragments_dir_pattern)
+            if fragments_dir_candidates:
+                fragments_dir = fragments_dir_candidates[0]
+        
+        if fragments_dir and os.path.exists(fragments_dir):
             files = glob.glob(os.path.join(fragments_dir, "patch_file_*.pdb"))
             current_count = len(files)
             
@@ -369,17 +385,19 @@ def run_step_2():
             
 def cleanup():
     run_folder_name = "FrankPEPstein_run"
-    output_superposer_path = os.path.join(initial_path, run_folder_name, f"superpockets_residuesAligned3_RMSD0.1")
-    temp_folder_path = os.path.join(initial_path, run_folder_name, f"temp_folder_residuesAligned3_RMSD0.1")
+    base_run_dir = os.path.join(initial_path, run_folder_name)
+    
+    # Dynamic Cleanup
+    patterns = [
+        os.path.join(base_run_dir, "superpockets_residuesAligned3_RMSD*"),
+        os.path.join(base_run_dir, "temp_folder_residuesAligned3_RMSD*")
+    ]
     
     with log_output:
-        if os.path.exists(output_superposer_path):
-            subprocess.run(f"rm -rf {output_superposer_path}", shell=True)
-            print(f"Removed {output_superposer_path}")
-            
-        if os.path.exists(temp_folder_path):
-            subprocess.run(f"rm -rf {temp_folder_path}", shell=True)
-            print(f"Removed {temp_folder_path}")
+        for pat in patterns:
+            for folder in glob.glob(pat):
+                subprocess.run(f"rm -rf {folder}", shell=True)
+                print(f"Removed {folder}")
         print("Cleanup complete.")
 
 if __name__ == "__main__":

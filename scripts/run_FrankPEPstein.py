@@ -51,7 +51,7 @@ def main():
     # Switch to run_folder for superposer execution
     os.chdir(run_folder)
     
-    output_superposer_path = os.path.join(run_folder, "superpockets_residuesAligned3_RMSD0.1")
+    output_superposer_path = os.path.join(run_folder, "superpockets_residuesAligned3_RMSD0.5")
     
     # 1. Superposer
     print(f"--- Running Superposer ---")
