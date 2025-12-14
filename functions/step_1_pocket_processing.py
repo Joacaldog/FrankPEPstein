@@ -231,12 +231,14 @@ else:
     else:
         print("No pockets available to select.")
 
-#@title 4. Pocket Extraction & Box Generation
-#@markdown This step extracts the selected pocket (if Auto) or processes it (if Manual) and calculates the grid box.
+#@title 4. Pocket Extraction, Manual Adjustment & Box Generation
+#@markdown This step calculates the initial box, allows manual adjustment, and then extracts the final pocket.
 
 import os
 import subprocess
 import sys
+import ipywidgets as widgets
+from IPython.display import display
 
 # --- Helper Functions (Subprocess) ---
 def run_processing_isolated(receptor_path, pocket_path, output_pocket_path, mode="extract", buffer=0.0):
@@ -378,52 +380,139 @@ if __name__ == "__main__":
         print(f"Execution Error: {e.stderr}")
         return None, None, False
 
-# --- GUI ---
-output_log = widgets.Output()
+# --- UI Widgets ---
 
-def process_logic(b):
+# Center Widgets
+center_x = widgets.FloatText(description='Center X:', step=0.5)
+center_y = widgets.FloatText(description='Center Y:', step=0.5)
+center_z = widgets.FloatText(description='Center Z:', step=0.5)
+
+# Size Widgets
+size_x = widgets.FloatText(description='Size X:', step=1.0)
+size_y = widgets.FloatText(description='Size Y:', step=1.0)
+size_z = widgets.FloatText(description='Size Z:', step=1.0)
+
+# Buttons
+init_btn = widgets.Button(description='Uncover Pocket & Init Box', button_style='primary', icon='search')
+view_box_btn = widgets.Button(description='Update Visual', button_style='info', icon='eye')
+confirm_btn = widgets.Button(description='Confirm & Extract', button_style='success', icon='check')
+
+output_log = widgets.Output()
+viz_output = widgets.Output()
+
+# --- Logic ---
+
+def initialize_box(b):
     output_log.clear_output()
     with output_log:
         if 'pocket_dropdown' not in globals() or not pocket_dropdown.value:
-            print("No pocket selected.")
+            print("Please select a pocket first.")
             return
+
+        selected_pocket = pocket_dropdown.value
+        src_pocket_path = os.path.join(pockets_dir, selected_pocket)
+        # Temporary output just to get coords
+        temp_pocket_path = os.path.join(pockets_dir, "temp_calc.pdb")
+        
+        mode = "extract" if detection_mode == "Auto Detect" else "direct"
+        print(f"Calculating initial box for {selected_pocket}...")
+        
+        center, size, success = run_processing_isolated(
+            receptor_filename, src_pocket_path, temp_pocket_path, mode=mode, buffer=0.0
+        )
+        
+        if success:
+            center_x.value, center_y.value, center_z.value = center
+            size_x.value, size_y.value, size_z.value = size
+            print("Initial calculation successful. Adjust values below if needed.")
+            
+            # Auto-trigger visualization
+            update_visual(None)
+        else:
+            print("Failed to calculate initial box.")
+
+def update_visual(b):
+    viz_output.clear_output()
+    with viz_output:
+        if 'pocket_dropdown' not in globals() or not pocket_dropdown.value:
+            return
+            
+        full_pocket_path = os.path.join(pockets_dir, pocket_dropdown.value)
+        
+        view = py3Dmol.view(width=800, height=600)
+        
+        # Loaded Molecule (Recolor for contrast)
+        with open(receptor_filename, 'r') as f:
+            view.addModel(f.read(), "pdb")
+        view.setStyle({'cartoon': {'color': 'white'}})
+        view.addSurface(py3Dmol.SES, {'opacity': 0.1, 'color': 'gray'})
+        
+        # Add Pocket (Red)
+        if os.path.exists(full_pocket_path):
+             with open(full_pocket_path, 'r') as f:
+                view.addModel(f.read(), "pdb")
+             view.setStyle({'model': -1}, {'sphere': {'color': 'red', 'opacity': 0.8}})
+        
+        # Add Box
+        cx, cy, cz = center_x.value, center_y.value, center_z.value
+        sx, sy, sz = size_x.value, size_y.value, size_z.value
+        
+        # Py3Dmol doesn't have a direct 'addBox' for just wireframe easily, 
+        # but we can use addShape for a crude box or just lines. 
+        # Using a simple custom representation or just a label if shapes fail.
+        # Actually addBox exists:
+        # addBox({center:{x,y,z}, dimensions: {w,h,d}, color, alpha, wireframe: true})
+        
+        view.addBox({
+            'center': {'x': cx, 'y': cy, 'z': cz},
+            'dimensions': {'w': sx, 'h': sy, 'd': sz},
+            'color': 'cyan',
+            'opacity': 0.5,
+            'wireframe': True
+        })
+        
+        view.zoomTo()
+        view.show()
+
+def finalize_process(b):
+    output_log.clear_output()
+    with output_log:
+        print("Finalizing...")
+        
+        # 1. Use user adjusted values
+        final_center = [center_x.value, center_y.value, center_z.value]
+        final_size = [size_x.value, size_y.value, size_z.value]
+        
+        # 2. Re-run or just save? 
+        # We need to re-run the extraction/chain rename steps to be safe and produce the final 'pocket.pdb'
+        # But we already have the box manually. We basically just need to save the PDB properly.
+        # Let's run the standard extraction (to get 'p' chain etc) again to be safe 
+        # and then OVERWRITE the state with our manual box.
         
         selected_pocket = pocket_dropdown.value
-        # Source path
         src_pocket_path = os.path.join(pockets_dir, selected_pocket)
-        
-        # Output path (FINAL pocket.pdb in proper location)
-        # User requested: "definamos una carpeta pocket en el main directory."
-        # Actually we are already using 'pockets' dir. 
-        # Does the user want the FINAL 'pocket.pdb' to be `pockets/pocket.pdb`?
-        # Yes: "Si se usa fpocket debe copiarse el pocket.pdb final a la carpeta pocket."
-        # And "storage... in FrankPEPstein/pockets". Wait, repo folder or main?
-        # User said "definamos una carpeta pocket en el main directory ... no en repo folder ... no la del repo clonado"
-        # So `os.getcwd()/pockets` is correct.
-        
         final_pocket_name = "pocket.pdb"
         final_pocket_path = os.path.join(pockets_dir, final_pocket_name)
         
-        print(f"Processing {selected_pocket}...")
-        
         mode = "extract" if detection_mode == "Auto Detect" else "direct"
-        print(f"Mode: {mode}")
         
-        center, size, success = run_processing_isolated(
+        # We use buffer=0.0 because we are overriding the box anyway, 
+        # but we need the script to generate the clean PDB file.
+        _, _, success = run_processing_isolated(
             receptor_filename, src_pocket_path, final_pocket_path, mode=mode, buffer=0.0
         )
         
-        if success and center:
+        if success:
             print("-" * 30)
-            print(f"Box Center: {center[0]:.3f}, {center[1]:.3f}, {center[2]:.3f}")
-            print(f"Box Size:   {size[0]:.3f}, {size[1]:.3f}, {size[2]:.3f}")
+            print(f"Final Box Center: {final_center}")
+            print(f"Final Box Size:   {final_size}")
             print("-" * 30)
             print(f"✅ Created Final Pocket: {final_pocket_path}")
             
             # Save State
             global box_center, box_size, extracted_pocket_path
-            box_center = center
-            box_size = size
+            box_center = final_center
+            box_size = final_size
             extracted_pocket_path = os.path.abspath(final_pocket_path)
             
             save_pipeline_state({
@@ -432,23 +521,35 @@ def process_logic(b):
                 "extracted_pocket_path": extracted_pocket_path
             })
             
-            # Copy to Root for user visibility (matches run_local behavior)
+            # Copy to Root
             root_pocket = os.path.join(initial_path, "pocket.pdb")
             try:
+                import shutil
                 shutil.copy(final_pocket_path, root_pocket)
                 print(f"✅ Copied to Root: {root_pocket}")
             except Exception as e:
                 print(f"Warning: Could not copy to root: {e}")
         else:
-            print("Processing Failed.")
+            print("Error creating final pocket file.")
 
-process_btn = widgets.Button(
-    description='Confirm & Process Pocket',
-    button_style='success',
-    icon='check',
-    layout=widgets.Layout(width='50%')
-)
-process_btn.on_click(process_logic)
+
+init_btn.on_click(initialize_box)
+view_box_btn.on_click(update_visual)
+confirm_btn.on_click(finalize_process)
+
+# Layout
+ui = widgets.VBox([
+    init_btn,
+    widgets.HBox([
+        widgets.VBox([widgets.Label("Center"), center_x, center_y, center_z]),
+        widgets.VBox([widgets.Label("Size"), size_x, size_y, size_z])
+    ]),
+    view_box_btn,
+    viz_output,
+    widgets.HTML("<hr>"),
+    confirm_btn,
+    output_log
+])
 
 print("\n--- 4. Pocket Processing & Box Calculation ---")
-display(process_btn, output_log)
+display(ui)

@@ -61,7 +61,7 @@ def transform_atoms(atoms, center, rot_matrix):
     return new_atoms
 
 def align_perspective(pocket_atoms):
-    """Calculates rotation matrix based on pocket PCA."""
+    """Calculates rotation matrix based on pocket PCA + Isometric tilt."""
     coords = np.array([[a['x'], a['y'], a['z']] for a in pocket_atoms])
     if len(coords) < 3:
         return np.eye(3), np.mean(coords, axis=0) if len(coords)>0 else [0,0,0]
@@ -70,9 +70,53 @@ def align_perspective(pocket_atoms):
     centered = coords - center
     cov = np.cov(centered, rowvar=False)
     evals, evecs = np.linalg.eigh(cov)
+    # PCA aligns with principal axes. Often flat.
     idx = evals.argsort()[::-1]
     evecs = evecs[:, idx]
-    return evecs, center
+    
+    # --- ADD ISOMETRIC-LIKE OFFSET ---
+    # We apply a rigid rotation AFTER aligning to PCA to show depth.
+    # Rotation X (45 deg) * Rotation Y (30 deg)
+    
+    # Rx (45)
+    theta_x = np.radians(45)
+    rx = np.array([
+        [1, 0, 0],
+        [0, np.cos(theta_x), -np.sin(theta_x)],
+        [0, np.sin(theta_x), np.cos(theta_x)]
+    ])
+    
+    # Ry (30)
+    theta_y = np.radians(30)
+    ry = np.array([
+        [np.cos(theta_y), 0, np.sin(theta_y)],
+        [0, 1, 0],
+        [-np.sin(theta_y), 0, np.cos(theta_y)]
+    ])
+    
+    iso_rot = np.dot(rx, ry)
+    
+    # Final Matrix = PCA * Isometric
+    # Note: evecs columns are axes. Mapping world to aligned space.
+    # Transpose of evecs rotates vector TO principal frame.
+    # Then we apply iso_rot.
+    # Combined = Iso * (PCA_Transpose) 
+    # But here we return a matrix 'rot_matrix' such that: v_new = dot(v_old - c, rot_matrix)
+    # So we want M such that v_new = (v_old - c) @ M
+    
+    # evecs maps local -> world. evecs.T maps world -> local.
+    # If we want v_local = (v-c) @ evecs (if row vectors?)
+    # Numpy eigh returns column eigenvectors. 
+    # So v_world = evecs @ v_local. v_local = evecs.T @ v_world.
+    # If using row vectors: v_local^T = v_world^T @ evecs
+    
+    # We want to rotate the cloud. 
+    # v_aligned = (v-c) @ evecs   (This aligns PC1 to X, PC2 to Y, PC3 to Z approximately)
+    # Then v_iso = v_aligned @ iso_rot.T
+    
+    final_matrix = np.dot(evecs, iso_rot.T)
+    
+    return final_matrix, center
 
 def render_static_view(receptor_path, pocket_path, box_center, box_size, fragments_paths, title="Processing..."):
     # 1. Load Data
