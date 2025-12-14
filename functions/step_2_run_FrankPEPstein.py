@@ -28,6 +28,8 @@ threads = 0 #@param {type:"integer"}
 if threads <= 0:
     threads = multiprocessing.cpu_count()
 candidates = 10 #@param {type:"integer"}
+modeller_key = 'MODELIRANJE'
+
 
 # --- Configuration & State ---
 initial_path = os.getcwd()
@@ -38,11 +40,40 @@ state_file = "pipeline_state.json"
 def fix_permissions():
     executables = [
         f"{repo_folder}/utilities/vina_1.2.4_linux_x86_64",
-        f"{initial_path}/utilities/click/click"
+        f"{os.getcwd()}/utilities/click/click"
     ]
     for exe in executables:
         if os.path.exists(exe):
             os.chmod(exe, 0o755)
+
+def ensure_modeller_config(key='MODELIRANJE'):
+    """Finds and fixes Modeller config.py with the provided key."""
+    try:
+        import modeller
+        modeller_path = os.path.dirname(modeller.__file__)
+        config_path = os.path.join(modeller_path, "config.py")
+    except ImportError:
+        # Fallback search if module not importable in this context
+        config_path = None
+        possible_paths = [
+             "/usr/local/envs/FrankPEPstein/lib/modeller-*/modlib/modeller/config.py",
+             f"{sys.prefix}/lib/modeller-*/modlib/modeller/config.py"
+        ]
+        for pattern in possible_paths:
+            found = glob.glob(pattern)
+            if found:
+                config_path = found[0]
+                break
+    
+    if config_path and os.path.exists(config_path):
+        try:
+            with open(config_path, 'w') as f:
+                f.write(f"license = '{key}'\n")
+                f.write("install_dir = r'/usr/local/envs/FrankPEPstein/lib/modeller-10.8'\n") # Basic config
+            return True, config_path
+        except Exception as e:
+            return False, str(e)
+    return False, "Not found"
 
 fix_permissions()
 
@@ -56,8 +87,7 @@ if os.path.exists(state_file):
         pass
 
 receptor_path = pipeline_state.get("receptor_filename", None)
-pockets_dir = os.path.join(initial_path, "pockets")
-standard_pocket_path = os.path.join(pockets_dir, "pocket.pdb")
+standard_pocket_path = os.path.join(initial_path, "pocket.pdb")
 
 if os.path.exists(standard_pocket_path):
     extracted_pocket_path = standard_pocket_path
@@ -109,50 +139,15 @@ def generate_view_html(extra_pdbs=None):
     try:
         view = py3Dmol.view(width=800, height=600)
         
-        # 1. Receptor (0.85 opacity as requested)
-        if receptor_path and os.path.exists(receptor_path):
-            with open(receptor_path, 'r') as f:
-                view.addModel(f.read(), "pdb")
-            view.setStyle({'model': -1}, {})
-            view.addSurface(py3Dmol.SES, {'opacity': 0.85, 'color': 'white'})
+        # REMOVED: Receptor and Gridbox as requested by user to prevent crashes/load
             
-        # 2. Pocket
+        # 1. Pocket (Only show pocket)
         if extracted_pocket_path and os.path.exists(extracted_pocket_path):
             with open(extracted_pocket_path, 'r') as f:
                 view.addModel(f.read(), "pdb")
             view.setStyle({'model': -1}, {'sphere': {'color': 'orange', 'opacity': 0.6}})
 
-        # 3. Gridbox (Wireframe Edges)
-        if box_center and box_size:
-            cx, cy, cz = box_center
-            sx, sy, sz = box_size
-            
-            # Calculate corners
-            min_x, max_x = cx - sx/2, cx + sx/2
-            min_y, max_y = cy - sy/2, cy + sy/2
-            min_z, max_z = cz - sz/2, cz + sz/2
-            
-            p1 = {'x':min_x, 'y':min_y, 'z':min_z}
-            p2 = {'x':max_x, 'y':min_y, 'z':min_z}
-            p3 = {'x':max_x, 'y':max_y, 'z':min_z}
-            p4 = {'x':min_x, 'y':max_y, 'z':min_z}
-            
-            p5 = {'x':min_x, 'y':min_y, 'z':max_z}
-            p6 = {'x':max_x, 'y':min_y, 'z':max_z}
-            p7 = {'x':max_x, 'y':max_y, 'z':max_z}
-            p8 = {'x':min_x, 'y':max_y, 'z':max_z}
-            
-            def add_line_edge(start, end):
-                view.addLine({'start': start, 'end': end, 'color': 'red', 'linewidth': 5})
-
-            # Bottom Face
-            add_line_edge(p1, p2); add_line_edge(p2, p3); add_line_edge(p3, p4); add_line_edge(p4, p1)
-            # Top Face
-            add_line_edge(p5, p6); add_line_edge(p6, p7); add_line_edge(p7, p8); add_line_edge(p8, p5)
-            # Verticals
-            add_line_edge(p1, p5); add_line_edge(p2, p6); add_line_edge(p3, p7); add_line_edge(p4, p8)
-
-        # 4. Extra Fragments (Live Updates)
+        # 2. Extra Fragments (Live Updates)
         if extra_pdbs:
             for pdb_file in extra_pdbs:
                  if os.path.exists(pdb_file):
@@ -178,7 +173,7 @@ stop_event = threading.Event()
 
 def monitor_fragments():
     run_folder_name = "FrankPEPstein_run"
-    fragments_dir = os.path.join(initial_path, run_folder_name, "superpockets_residuesAligned3_RMSD0.1")
+    fragments_dir = os.path.join(os.getcwd(), run_folder_name, "superpockets_residuesAligned3_RMSD0.1")
     
     last_count = 0
     
@@ -212,6 +207,15 @@ def run_step_2():
     progress_bar.value = 0
     progress_bar.bar_style = 'info'
     status_label.value = "Initializing..."
+    
+    # 0. Fix Modeller License
+    with log_output:
+        print("Checking Modeller License...")
+        success, msg = ensure_modeller_config(modeller_key)
+        if success:
+             print(f"✅ Modeller license configured in {msg}")
+        else:
+             print(f"⚠️ Warning: Could not configure Modeller license: {msg}")
 
     if not receptor_path or not extracted_pocket_path:
         with log_output:
