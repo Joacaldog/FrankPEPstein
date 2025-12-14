@@ -1,5 +1,5 @@
 
-#@title 3.5. Visualize Peptide Candidates
+#@title 2.5. Visualize Peptide Candidates
 #@markdown **Instructions:**
 #@markdown Run this cell to visualize the final receptor-pocket-peptide candidates in 3D.
 

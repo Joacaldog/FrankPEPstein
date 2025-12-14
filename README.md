@@ -55,14 +55,14 @@ Run the first cell. This will:
     *   **Candidates**: Number of top peptides to refine in the final step.
 *   **Visualize**: The generated seed fragments appear in the viewer. The pocket is shown as a white ghost surface, and new fragments appear as green dots (stable static visualization).
 
-### 3.5. Visualize Candidates
+### 2.5. Visualize Candidates
 After generation, visualize the final results in 3D:
 *   Displays the **Receptor** (White Surface/Cartoon).
 *   Displays the **Pocket** (Orange Surface).
 *   Displays the **Gridbox** (Thick Red Wireframe).
 *   Displays the **Top Candidates** (Green Sticks).
 
-### 4. Analysis
+### 3. Analysis
 The pipeline automatically:
 *   Extracts amino acid sequences from the top candidate PDBs.
 *   Aligns them to generate a **Multifasta** file.

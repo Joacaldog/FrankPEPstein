@@ -36,15 +36,13 @@ def create_notebook():
         "nbformat_minor": 0
     }
 
-    # Sort logically: step_0, step_1, step_2, step_3, step_3_5, step_4
+    # Sort logically: step_0, step_1, step_2, step_2_5, step_3, step_4
     # We prioritize the number inside the filename
     def sort_key(filepath):
         basename = os.path.basename(filepath)
-        # Extract numbers, e.g. "step_3_5" -> [3, 5]
+        # Extract numbers, e.g. "step_2_5" -> [2, 5]
         # "step_3_align" -> [3]
-        # This allows 3.5 ( [3, 5] ) to be > 3 ( [3] ) ? No. [3, 5] > [3] is True.
-        # But wait, step_3 vs step_3_5:
-        # [3] vs [3, 5]. Python list comparison: [3] < [3, 5]. Correct.
+        # [2] < [2, 5] < [3]. Logic holds.
         numbers = [int(x) for x in re.findall(r'\d+', basename)]
         return numbers
 

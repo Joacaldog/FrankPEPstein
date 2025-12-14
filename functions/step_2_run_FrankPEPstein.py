@@ -148,16 +148,21 @@ ui_container = widgets.VBox([
 
 def update_static_viz(extra_pdbs=None, title="Pipeline Running..."):
     try:
+        # Pockets is standard_pocket_path (or extracted_pocket_path)
         if extracted_pocket_path and os.path.exists(extracted_pocket_path):
             img_bytes = viz_utils.render_static_view(
-                extracted_pocket_path, 
-                extra_pdbs if extra_pdbs else [],
+                receptor_path=receptor_path,
+                pocket_path=extracted_pocket_path,
+                box_center=box_center,
+                box_size=box_size,
+                fragments_paths=extra_pdbs if extra_pdbs else [],
                 title=title
             )
             if img_bytes:
                 out_vis.value = img_bytes
     except Exception as e:
-        # Fail silently visually, log if needed
+        # Fail can happen if paths missing or viz error
+        # print(e) # Debug
         pass
 
 # Initial view

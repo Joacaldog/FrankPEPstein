@@ -3,21 +3,24 @@ import os
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Circle, Rectangle
 from io import BytesIO
 
-def get_atom_coords(pdb_file, atom_type=None):
+# --- Constants ---
+ATOM_RADII = {'C': 1.7, 'N': 1.55, 'O': 1.52, 'S': 1.8, 'H': 1.2, 'P': 1.8}
+ATOM_COLORS = {'C': '#00FF00', 'N': 'blue', 'O': 'red', 'S': 'yellow', 'P': 'orange', 'H': 'white'} # Carbon Green as requested
+
+def get_atom_data(pdb_file, atom_type=None):
     """
-    Parses a PDB file and returns a list of (x, y, z) coordinates.
-    If atom_type is specified (e.g., 'CA'), only those atoms are returned.
+    Parses PDB and returns list of dicts: {'x', 'y', 'z', 'element', 'name', 'resid'}
     """
-    coords = []
+    atoms = []
     if not os.path.exists(pdb_file):
-        return np.array(coords)
+        return atoms
     
     with open(pdb_file, 'r') as f:
         for line in f:
             if line.startswith("ATOM") or line.startswith("HETATM"):
-                # Check atom type if requested
                 name = line[12:16].strip()
                 if atom_type and name != atom_type:
                     continue
@@ -26,120 +29,188 @@ def get_atom_coords(pdb_file, atom_type=None):
                     x = float(line[30:38])
                     y = float(line[38:46])
                     z = float(line[46:54])
-                    coords.append([x, y, z])
+                    element = line[76:78].strip()
+                    if not element:
+                        element = name[0] # Fallback
+                    
+                    resid = line[22:26].strip()
+                    
+                    atoms.append({
+                        'x': x, 'y': y, 'z': z,
+                        'element': element,
+                        'name': name,
+                        'resid': resid
+                    })
                 except ValueError:
                     pass
-    return np.array(coords)
+    return atoms
 
-def align_to_principal_axes(coords):
-    """
-    Aligns coordinates to their principal axes using SVD.
-    Returns aligned coordinates and the rotation matrix.
-    """
-    if coords.shape[0] < 3:
-        return coords, np.eye(3)
+def transform_atoms(atoms, center, rot_matrix):
+    """Applies centering and rotation to atom list."""
+    coords = np.array([[a['x'], a['y'], a['z']] for a in atoms])
+    if len(coords) == 0: return []
+    
+    centered = coords - center
+    aligned = np.dot(centered, rot_matrix)
+    
+    new_atoms = []
+    for i, atom in enumerate(atoms):
+        new_a = atom.copy()
+        new_a['x'], new_a['y'], new_a['z'] = aligned[i]
+        new_atoms.append(new_a)
+    return new_atoms
+
+def align_perspective(pocket_atoms):
+    """Calculates rotation matrix based on pocket PCA."""
+    coords = np.array([[a['x'], a['y'], a['z']] for a in pocket_atoms])
+    if len(coords) < 3:
+        return np.eye(3), np.mean(coords, axis=0) if len(coords)>0 else [0,0,0]
         
-    # Center
     center = np.mean(coords, axis=0)
     centered = coords - center
-    
-    # SVD
-    # U, S, Vh = np.linalg.svd(centered)
-    # Vh contains the rotation (principal axes)
-    # Rotated coordinates = centered @ Vh.T
-    
-    # Covariance matrix
     cov = np.cov(centered, rowvar=False)
     evals, evecs = np.linalg.eigh(cov)
-    
-    # Sort eigenvalues/vectors (largest to smallest)
     idx = evals.argsort()[::-1]
     evecs = evecs[:, idx]
-    
-    # Rotate
-    aligned = np.dot(centered, evecs)
-    
-    # Force X to be the long axis (already done by sort order usually)
-    return aligned, evecs, center
+    return evecs, center
 
-def render_static_view(pocket_path, fragments_paths, title="Processing..."):
-    """
-    Generates a static matplotlib image (buffer) of the pocket and fragments.
-    Aligns the view so the pocket is horizontal.
-    """
+def render_static_view(receptor_path, pocket_path, box_center, box_size, fragments_paths, title="Processing..."):
+    # 1. Load Data
+    pocket_atoms = get_atom_data(pocket_path)
+    if not pocket_atoms: return None
     
-    # 1. Load Pocket Coords
-    pocket_coords = get_atom_coords(pocket_path)
-    if len(pocket_coords) == 0:
-        return None
-        
-    # 2. Align Pocket (Principal Axis to X)
-    p_aligned, rot_matrix, center = align_to_principal_axes(pocket_coords)
+    receptor_atoms = get_atom_data(receptor_path)
     
-    # 3. Load Fragments and Transform with same matrix
-    frag_coords_list = []
+    # 2. Calculate Alignment (Focus on Pocket)
+    rot_matrix, center = align_perspective(pocket_atoms)
+    
+    # 3. Transform All
+    p_aligned = transform_atoms(pocket_atoms, center, rot_matrix)
+    r_aligned = transform_atoms(receptor_atoms, center, rot_matrix)
+    
+    frag_aligned_list = []
     for fp in fragments_paths:
-        fc = get_atom_coords(fp)
-        if len(fc) > 0:
-            # Center then Rotate
-            fc_centered = fc - center
-            fc_aligned = np.dot(fc_centered, rot_matrix)
-            frag_coords_list.append(fc_aligned)
-            
+        f_atoms = get_atom_data(fp)
+        frag_aligned_list.append(transform_atoms(f_atoms, center, rot_matrix))
+        
+    # Transform Gridbox Corners
+    cx, cy, cz = box_center
+    sx, sy, sz = box_size
+    corners = [
+        [cx-sx/2, cy-sy/2, cz-sz/2], [cx+sx/2, cy-sy/2, cz-sz/2],
+        [cx-sx/2, cy+sy/2, cz-sz/2], [cx+sx/2, cy+sy/2, cz-sz/2],
+        [cx-sx/2, cy-sy/2, cz+sz/2], [cx+sx/2, cy-sy/2, cz+sz/2],
+        [cx-sx/2, cy+sy/2, cz+sz/2], [cx+sx/2, cy+sy/2, cz+sz/2]
+    ]
+    corners_aligned = np.dot(np.array(corners) - center, rot_matrix)
+    
     # 4. Plot
-    fig = plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(10, 8)) # Larger
     ax = fig.add_subplot(111)
     
-    # Plot Pocket (White/Ghostly Surface)
-    # We use Z (depth) to control alpha or sorting if we wanted, 
-    # but for simple "ghost" we use low alpha and large marker.
-    # X axis is p_aligned[:, 0], Y is p_aligned[:, 1]
+    # Z-sorting for "3D-like" 2D plot
+    # We collect all render operations and sort by Z depth
+    render_queue = []
     
-    # Scatter Pocket
-    ax.scatter(
-        p_aligned[:, 0], 
-        p_aligned[:, 1], 
-        c='orange', # User requested orange surface in Step 3.5, but for this "scanning" step 
-                    # white/ghost was mentioned in previous context. Let's use light gray/orange mix.
-                    # User request: "el pocket se vea como superficie en blanco" (the pocket should look like a white surface)
-        edgecolors='none', 
-        alpha=0.1, 
-        s=100,
-        label='Pocket'
-    )
+    # A. Gridbox Lines (Draw first/behind or make explicit?)
+    # Lines don't occlude well in simple 2D scatter, check Z.
+    # We will draw gridbox on top usually or behind? Pymol draws on top often.
+    # Let's add segments to queue.
+    edges = [
+        (0,1), (1,3), (3,2), (2,0), # Back face? depends on rot.
+        (4,5), (5,7), (7,6), (6,4), # Front face
+        (0,4), (1,5), (2,6), (3,7)  # Connecting
+    ]
     
-    # Plot Fragments (Green)
-    for i, fc in enumerate(frag_coords_list):
-        ax.scatter(
-            fc[:, 0], 
-            fc[:, 1], 
-            c='#00FF00', # Green
-            s=20,
-            alpha=0.8,
-            marker='.'
-        )
-        # Connect atoms in fragment with lines? Maybe too messy. 
-        # Fragments are small peptides. Just dots is safer for speed.
+    for s, e in edges:
+        p1, p2 = corners_aligned[s], corners_aligned[e]
+        z_avg = (p1[2] + p2[2])/2
+        render_queue.append({
+            'type': 'line', 'z': z_avg,
+            'x': [p1[0], p2[0]], 'y': [p1[1], p2[1]],
+            'color': 'red', 'width': 3
+        })
         
+    # B. Receptor & Pocket (Surfaces)
+    # We use circles. 
+    for atom in r_aligned:
+        # Check if in view? Optimization: Distance from origin (pocket center)
+        # Zoom factor logic: box size ~20A. Show maybe 30-40A radius.
+        dist = x = atom['x']**2 + atom['y']**2
+        if dist > 3600: continue # Skip atoms far away (>60A) optimization
+        
+        # Color: White
+        render_queue.append({
+            'type': 'atom', 'z': atom['z'],
+            'x': atom['x'], 'y': atom['y'],
+            'r': 120, # Size depends on zoom. Fixed for now.
+            'c': 'white', 'alpha': 0.8
+        })
+        
+    for atom in p_aligned:
+        render_queue.append({
+            'type': 'atom', 'z': atom['z'],
+            'x': atom['x'], 'y': atom['y'],
+            'r': 130, # Slightly larger/different
+            'c': 'orange', 'alpha': 0.6
+        })
+
+    # C. Fragments (Sticks)
+    # Need connectivity. Simple distance check < 1.6A
+    for frag in frag_aligned_list:
+        # Atoms
+        for i, atom in enumerate(frag):
+            elem = atom['element']
+            color = ATOM_COLORS.get(elem, 'gray')
+            if elem == 'C': color = '#00FF00' # Explicit Green Carbon
+            
+            render_queue.append({
+                'type': 'atom', 'z': atom['z'],
+                'x': atom['x'], 'y': atom['y'],
+                'r': 40, # Smaller than surface
+                'c': color, 'alpha': 1.0
+            })
+            
+            # Bonds (Forward check)
+            for j in range(i+1, len(frag)):
+                atom2 = frag[j]
+                # Distance
+                d2 = (atom['x']-atom2['x'])**2 + (atom['y']-atom2['y'])**2 + (atom['z']-atom2['z'])**2
+                if d2 < 2.6: # 1.6**2 ~ 2.56
+                    z_avg = (atom['z'] + atom2['z'])/2
+                    render_queue.append({
+                        'type': 'line', 'z': z_avg,
+                        'x': [atom['x'], atom2['x']], 'y': [atom['y'], atom2['y']],
+                        'color': 'white', 'width': 2 # Bond color usually gray/white
+                    })
+
+    # 5. Execute Sort and Draw
+    render_queue.sort(key=lambda item: item['z'])
+    
+    for item in render_queue:
+        if item['type'] == 'atom':
+            ax.scatter(item['x'], item['y'], s=item['r'], c=item['c'], alpha=item['alpha'], edgecolors='none')
+        elif item['type'] == 'line':
+            ax.plot(item['x'], item['y'], c=item['color'], linewidth=item['width'], alpha=0.8)
+
+    # 6. Zoom / Limits
+    # Focus on Gridbox Size + Padding
+    max_dim = max(sx, sy, sz)
+    limit = (max_dim / 2) * 1.5 # 1.5x zoom padding
+    
+    ax.set_xlim(-limit, limit)
+    ax.set_ylim(-limit, limit)
+    
     ax.set_aspect('equal')
     ax.set_axis_off()
-    ax.set_title(title, color='black')
+    ax.set_title(title, color='white')
     
-    # Dark background like py3dmol default? Or white?
-    # User screenshot showed dark background. Matplotlib usually white.
-    # Let's check prompt. "check that the pocket surface looks like a white surface" 
-    # implies dark background might be better to see "white".
+    # Dark Background
+    fig.patch.set_facecolor('black')
+    ax.set_facecolor('black')
     
-    # Set dark background
-    fig.patch.set_facecolor('#1a1a1a')
-    ax.set_facecolor('#1a1a1a')
-    
-    # If pocket is white, we change color above
-    ax.collections[0].set_color('white') 
-    
-    # Save to buffer
     buf = BytesIO()
-    plt.savefig(buf, format='png', facecolor='#1a1a1a') # Save with background
+    plt.savefig(buf, format='png', facecolor='black')
     plt.close(fig)
     buf.seek(0)
     return buf.read()
