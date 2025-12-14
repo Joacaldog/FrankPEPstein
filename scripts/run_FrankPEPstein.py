@@ -106,7 +106,7 @@ def main():
             cluster_dir = f"frankPEPstein_{pep_size}"
             if os.path.exists(cluster_dir):
                 os.chdir(cluster_dir)
-                shutil.copy(os.path.join(initial_path, "receptor.pdb"), ".") # Replaced os.system('cp ...') with shutil.copy
+                shutil.copy(pocket_pdb, ".") # Modified: Copy pocket instead of receptor for VINA 2 speedup
                 
                 print(f"--- Running FrankVINA 2 ---")
                 cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} {threads} {candidates_number}'

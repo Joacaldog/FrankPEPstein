@@ -16,7 +16,8 @@ import subprocess
 import random  # Para hacer la muestra aleatoria
 
 initial_path = sys.argv[1]
-receptor_file = "receptor.pdb"
+# Modified to use pocket.pdb for speed
+receptor_file = "pocket.pdb"
 threads = sys.argv[2]
 selected_peps = int(sys.argv[3])
 

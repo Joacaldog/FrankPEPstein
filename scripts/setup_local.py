@@ -54,7 +54,7 @@ def main():
         log(f"Creating Conda Environment '{env_name}'... (This may take a while)", parse_color=GREEN)
         cmd = (
             f"{conda_cmd} create -n {env_name} -y -c conda-forge -c salilab "
-            "openbabel biopython fpocket joblib tqdm py3dmol vina pigz python=3.10 salilab::modeller"
+            "openbabel biopython fpocket joblib tqdm py3dmol vina pigz scipy scikit-learn python=3.10 salilab::modeller"
         )
         log(f"Running: {cmd}")
         ret = subprocess.run(cmd, shell=True)
@@ -105,6 +105,34 @@ def main():
         if os.path.exists(adfr_extracted) and not os.path.exists(adfr_target):
              log(f"Renaming ADFR folder...", YELLOW)
              os.rename(adfr_extracted, adfr_target)
+             
+        # [ADDED] Patch ADFR scripts with current path (fix hardcoded /home/joacaldo paths)
+        if os.path.exists(adfr_target):
+             log("Patching ADFR scripts paths...", GREEN)
+             bin_dir = os.path.join(adfr_target, "bin")
+             abs_adfr_path = os.path.abspath(adfr_target)
+             for fname in os.listdir(bin_dir):
+                 fpath = os.path.join(bin_dir, fname)
+                 if os.path.isfile(fpath) and not os.path.islink(fpath):
+                     try:
+                         # Read (ignore errors for binaries)
+                         with open(fpath, 'rb') as f:
+                             content_bytes = f.read()
+                         
+                         # Check if text file (shebang or ADS_ROOT)
+                         try:
+                             content = content_bytes.decode('utf-8')
+                             if "ADS_ROOT=" in content:
+                                 import re
+                                 # Replace ADS_ROOT="..." with correct path
+                                 new_content = re.sub(r'ADS_ROOT="[^"]+"', f'ADS_ROOT="{abs_adfr_path}"', content)
+                                 with open(fpath, 'w') as f:
+                                     f.write(new_content)
+                                 log(f"Patched {fname}", YELLOW)
+                         except UnicodeDecodeError:
+                             pass # Binary file
+                     except Exception as e:
+                         pass
              
         # Permissions
         log("Fixing permissions...", GREEN)
