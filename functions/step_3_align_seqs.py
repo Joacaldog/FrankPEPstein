@@ -21,7 +21,8 @@ run_base = os.path.join(initial_path, "FrankPEPstein_run")
 # We need to search recursively or assume standard structure.
 # Structure: FrankPEPstein_run/frankPEPstein_{pep_size}/top_{candidates}_peps/
 
-candidate_folders = glob.glob(os.path.join(run_base, "frankPEPstein_*", "top_*_peps"))
+# Recursive glob to match: FrankPEPstein_run/**/top_*_peps
+candidate_folders = glob.glob(os.path.join(run_base, "**", "top_*_peps"), recursive=True)
 
 if not candidate_folders:
     print("❌ No candidate results found from Step 2.")

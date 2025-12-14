@@ -239,7 +239,7 @@ import subprocess
 import sys
 
 # --- Helper Functions (Subprocess) ---
-def run_processing_isolated(receptor_path, pocket_path, output_pocket_path, mode="extract", buffer=3.0):
+def run_processing_isolated(receptor_path, pocket_path, output_pocket_path, mode="extract", buffer=0.0):
     """
     Runs extraction/processing and box calculation in isolated environment.
     Mode: "extract" (Fpocket: 5A NeighborSearch) or "direct" (Manual: Load & Box only)
@@ -410,7 +410,7 @@ def process_logic(b):
         print(f"Mode: {mode}")
         
         center, size, success = run_processing_isolated(
-            receptor_filename, src_pocket_path, final_pocket_path, mode=mode, buffer=3.0
+            receptor_filename, src_pocket_path, final_pocket_path, mode=mode, buffer=0.0
         )
         
         if success and center:

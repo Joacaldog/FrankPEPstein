@@ -37,8 +37,8 @@ def calculate_box_and_save(input_pocket, output_pocket):
         min_coord = [min([c[i] for c in coords]) for i in range(3)]
         max_coord = [max([c[i] for c in coords]) for i in range(3)]
         
-        # Buffer: User requested 3.0 A total buffer (size increase)
-        buffer = 3.0
+        # Buffer: User requested 0.0 buffer (no size increase)
+        buffer = 0.0
         
         center = [(min_coord[i] + max_coord[i]) / 2 for i in range(3)]
         size = [(max_coord[i] - min_coord[i]) + buffer for i in range(3)]

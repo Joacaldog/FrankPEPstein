@@ -43,7 +43,8 @@ def visualize_candidates():
     
     # 2. Find Candidates
     run_base = os.path.join(initial_path, "FrankPEPstein_run")
-    candidate_folders = glob.glob(os.path.join(run_base, "frankPEPstein_*", "top_*_peps"))
+    # Recursive glob to match: FrankPEPstein_run/**/top_*_peps
+    candidate_folders = glob.glob(os.path.join(run_base, "**", "top_*_peps"), recursive=True)
     
     if not candidate_folders:
         print("❌ No candidate results found. Run fragments generation first.")
