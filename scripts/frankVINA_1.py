@@ -33,7 +33,7 @@ REDUCE_DB_PATH = f"{initial_path}/DB/reduce_wwPDB_het_dict.txt"
 # Using the binaries directly now that they are in PATH context
 PREPARE_RECEPTOR_PATH = os.path.join(ADFR_BIN, "prepare_receptor")
 PREPARE_LIGAND_PATH = os.path.join(ADFR_BIN, "prepare_ligand")
-VINA_PATH = f"{initial_path}/FrankPEPstein/utilities/vina_1.2.4_linux_x86_64"
+VINA_PATH = f"{initial_path}/utilities/vina_1.2.4_linux_x86_64"
 OBABEL_PATH = os.path.join(ADFR_BIN, "obabel")
 
 

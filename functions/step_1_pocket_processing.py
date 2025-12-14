@@ -43,11 +43,14 @@ receptor_filename = None
 initial_path = os.getcwd() # Main Directory
 # Refactor: Use FrankPEPstein_run as centralized storage for execution
 pockets_dir = os.path.join(initial_path, "FrankPEPstein_run") 
+fpocket_storage_dir = os.path.join(pockets_dir, "fpocket")
 final_pockets_list = []
 
 # Ensure pockets dir exists
 if not os.path.exists(pockets_dir):
     os.makedirs(pockets_dir)
+if not os.path.exists(fpocket_storage_dir):
+    os.makedirs(fpocket_storage_dir)
 
 # --- Persistence Logic ---
 def save_pipeline_state(updates):
@@ -141,7 +144,7 @@ else:
                     found_pockets = [f for f in os.listdir(fpocket_pockets_dir) if f.endswith(".pdb")]
                     for p in found_pockets:
                         src = os.path.join(fpocket_pockets_dir, p)
-                        dst = os.path.join(pockets_dir, p)
+                        dst = os.path.join(fpocket_storage_dir, p)
                         shutil.copy(src, dst)
                         final_pockets_list.append(p)
                         
@@ -169,7 +172,7 @@ else:
                 else:
                     clean_name = p_file
 
-                target_path = os.path.join(pockets_dir, clean_name)
+                target_path = os.path.join(fpocket_storage_dir, clean_name)
                 if os.path.exists(target_path):
                     os.remove(target_path)
                 
@@ -202,7 +205,7 @@ else:
             colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#008000', '#800000']
             
             for i, p_file in enumerate(sorted(final_pockets_list)):
-                full_path = os.path.join(pockets_dir, p_file)
+                full_path = os.path.join(fpocket_storage_dir, p_file)
                 if os.path.exists(full_path):
                     with open(full_path, 'r') as f:
                         view.addModel(f.read(), "pdb")
@@ -420,7 +423,7 @@ def initialize_ui(b):
 
     # 1. Calc Initial
     selected_pocket = pocket_dropdown.value
-    src_pocket_path = os.path.join(pockets_dir, selected_pocket)
+    src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
     temp_pocket_path = os.path.join(pockets_dir, "temp_calc.pdb")
     mode = "extract" if detection_mode == "Auto Detect" else "direct"
     
@@ -503,7 +506,7 @@ def update_visual(b):
         # But wait, we want to see the pocket relative to the box.
         # Ideally we use the 'temp_calc.pdb' if it was valid, or the source.
         # Let's use source for visualization to avoid confusion
-        src_pocket_path = os.path.join(pockets_dir, selected_pocket)
+        src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
         if os.path.exists(src_pocket_path):
              with open(src_pocket_path, 'r') as f:
                 view.addModel(f.read(), "pdb")
@@ -542,7 +545,7 @@ def finalize_process(b):
         final_size   = [controls['sx'].value, controls['sy'].value, controls['sz'].value]
         
         selected_pocket = pocket_dropdown.value
-        src_pocket_path = os.path.join(pockets_dir, selected_pocket)
+        src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
         final_pocket_name = "pocket.pdb"
         final_pocket_path = os.path.join(pockets_dir, final_pocket_name)
         

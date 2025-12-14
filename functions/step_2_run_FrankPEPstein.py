@@ -60,7 +60,7 @@ state_file = "pipeline_state.json"
 # Fix permissions
 def fix_permissions():
     executables = [
-        f"{repo_folder}/utilities/vina_1.2.4_linux_x86_64",
+        f"{initial_path}/utilities/vina_1.2.4_linux_x86_64",
         f"{initial_path}/utilities/click/click"
     ]
     for exe in executables:
