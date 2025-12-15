@@ -226,7 +226,7 @@ def monitor_fragments():
                 last_count = current_count
         
         # Check stop event every 1s, but wait 10s total interval (faster update for static image)
-        for _ in range(10):
+        for _ in range(30):
             if stop_event.is_set(): break
             time.sleep(1)
 
