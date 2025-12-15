@@ -56,7 +56,7 @@ candidates = 10 #@param {type:"integer"}
 sampling_limit = 500 #@param {type:"integer"}
 #@markdown *Subsampling limit (peptides to simulate). Total combinations are usually much higher; we sample for speed.*
 modeller_key = 'MODELIRANJE'
-rmsd_threshold = 0.5 #@param {type:"number"}
+rmsd_threshold = 0.1 #@param {type:"number"}
 
 
 # --- Configuration & State ---
