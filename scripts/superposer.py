@@ -45,6 +45,8 @@ parser.add_argument("-t", "--threads", type=int,
                     help="Number of threads", required=True)
 parser.add_argument("-fm", "--folder_minipockets", type=str,
                     help="folder containing minipockets", required=True)
+parser.add_argument("-rmsd", "--rmsd_allowed", type=float, default=0.5,
+                    help="RMSD cutoff for superposition")
 
 args = parser.parse_args()
 
@@ -66,7 +68,7 @@ pepbdb_folder = args.pepbdb_folder
 cutoff = 3
 threads = args.threads
 folder_minipockets = args.folder_minipockets
-RMSD_allowed = 0.7
+RMSD_allowed = args.rmsd_allowed
 x_center = args.x_center
 y_center = args.y_center
 z_center = args.z_center

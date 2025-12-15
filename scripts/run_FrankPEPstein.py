@@ -12,6 +12,7 @@ def main():
     parser.add_argument("-t", "--threads", type=int, default=36, help="Number of threads")
     parser.add_argument("-c", "--candidates", type=int, default=10, help="Number of candidates for Step 2")
     parser.add_argument("-s", "--sampling", type=int, default=500, help="Subsampling limit for Vina screening")
+    parser.add_argument("-rmsd", "--rmsd_allowed", type=float, default=0.5, help="RMSD cutoff for superposer")
     
     # Gridbox Parameters (Required for superposer)
     parser.add_argument("-xc", "--x_center", type=float, required=True, help="Resulting box center X")
@@ -51,7 +52,7 @@ def main():
     # Switch to run_folder for superposer execution
     os.chdir(run_folder)
     
-    output_superposer_path = os.path.join(run_folder, "superpockets_residuesAligned3_RMSD0.5")
+    output_superposer_path = os.path.join(run_folder, f"superpockets_residuesAligned3_RMSD{args.rmsd_allowed}")
     
     # 1. Superposer
     print(f"--- Running Superposer ---")
@@ -70,7 +71,8 @@ def main():
         "-z_center", str(args.z_center),
         "-x_size", str(args.x_size),
         "-y_size", str(args.y_size),
-        "-z_size", str(args.z_size)
+        "-z_size", str(args.z_size),
+        "-rmsd", str(args.rmsd_allowed)
     ]
     
     superposer_cmd_str = " ".join(superposer_cmd_list)
