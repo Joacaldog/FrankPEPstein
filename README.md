@@ -92,8 +92,6 @@ Run the following script to create the environment, download databases, and conf
 python3 scripts/setup_local.py
 ```
 
-Arguments:
-*   `--key`: Modeller license key (default: 'MODELIRANJE').
 
 Then activate the environment:
 ```bash

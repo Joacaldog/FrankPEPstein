@@ -1,239 +1,3 @@
-#@title 1. Input & Pocket Selection
-#@markdown **Instructions:**
-#@markdown 1. Upload your Receptor PDB.
-#@markdown 2. Choose Mode: **Auto Detect** (runs fpocket) or **Manual Upload** (upload your specific pocket PDB).
-#@markdown 3. Select the pocket from the dropdown to visualize.
-
-import os
-import sys
-import subprocess
-try:
-    import py3Dmol
-except ImportError:
-    # Try adding FrankPEPstein env to path
-    env_path = "/usr/local/envs/FrankPEPstein"
-    site_packages = f"{env_path}/lib/python3.10/site-packages"
-    if os.path.exists(site_packages):
-        if site_packages not in sys.path:
-            sys.path.append(site_packages)
-        # Add binary path too
-        if f"{env_path}/bin" not in os.environ['PATH']:
-            os.environ['PATH'] = f"{env_path}/bin:" + os.environ['PATH']
-    
-    # Retry import
-    try:
-        import py3Dmol
-    except ImportError:
-        print("py3Dmol not found. Installing...")
-        subprocess.run("pip install -q py3dmol", shell=True, check=True)
-        import py3Dmol
-
-import ipywidgets as widgets
-from google.colab import files
-from IPython.display import display
-import shutil
-import json
-import re
-
-# --- configuration ---
-detection_mode = "Auto Detect" #@param ["Auto Detect", "Manual Upload"]
-
-# Global variables
-receptor_filename = None
-initial_path = os.getcwd() # Main Directory
-# Refactor: Use FrankPEPstein_run as centralized storage for execution
-pockets_dir = os.path.join(initial_path, "FrankPEPstein_run") 
-fpocket_storage_dir = os.path.join(pockets_dir, "fpocket")
-final_pockets_list = []
-
-# Ensure pockets dir exists
-if not os.path.exists(pockets_dir):
-    os.makedirs(pockets_dir)
-if not os.path.exists(fpocket_storage_dir):
-    os.makedirs(fpocket_storage_dir)
-
-# --- Persistence Logic ---
-def save_pipeline_state(updates):
-    state_file = "pipeline_state.json"
-    current_state = {}
-    if os.path.exists(state_file):
-        try:
-            with open(state_file, "r") as f:
-                current_state = json.load(f)
-        except:
-            pass
-    current_state.update(updates)
-    with open(state_file, "w") as f:
-        json.dump(current_state, f, indent=4)
-    print(f"State saved to {state_file}")
-
-# --- 1. Upload Receptor ---
-print(f"--- Upload Receptor PDB ({detection_mode}) ---")
-uploaded_r = files.upload()
-
-if not uploaded_r:
-    print("No receptor file uploaded.")
-else:
-    raw_filename = list(uploaded_r.keys())[0]
-        
-    # Check for Colab duplicate naming (e.g. receptor(1).pdb)
-    match = re.search(r'^(.*?)\s?\(\d+\)(\.[^.]*)?$', raw_filename)
-    if match:
-        clean_name = match.group(1) + (match.group(2) if match.group(2) else "")
-        print(f"Detected duplicate upload: {raw_filename} -> overwriting {clean_name}")
-        
-        if os.path.exists(clean_name):
-            os.remove(clean_name)
-        os.rename(raw_filename, clean_name)
-        receptor_filename = os.path.abspath(clean_name)
-    else:
-        receptor_filename = os.path.abspath(raw_filename)
-        
-    print(f"Receptor: {receptor_filename}")
-    save_pipeline_state({"receptor_filename": receptor_filename})
-
-    # --- 2. Pocket Handling ---
-
-    # Determine fpocket path
-    fpocket_bin = "fpocket"
-    if shutil.which(fpocket_bin) is None:
-        # Try specific env path
-        env_fpocket = "/usr/local/envs/FrankPEPstein/bin/fpocket"
-        if os.path.exists(env_fpocket):
-            fpocket_bin = env_fpocket
-        else:
-            print("⚠️ fpocket executable not found in PATH or FrankPEPstein env.")
-            # We let it fail in subprocess if still not found, but this warning helps.
-
-    if detection_mode == "Auto Detect":
-        try:
-            print(f"Running fpocket on {receptor_filename}")
-            # Capture output for debugging
-            # Using -m to filter small pockets as requested - REMOVED due to user report of bugs
-            result = subprocess.run(f"{fpocket_bin} -f '{receptor_filename}'", shell=True, capture_output=True, text=True)
-
-            
-            if result.returncode != 0:
-                print("❌ Error running fpocket.")
-                print(f"Exit Code: {result.returncode}")
-                print(f"STDERR:\n{result.stderr}")
-                print(f"STDOUT:\n{result.stdout}")
-                # We can try to look at why.
-            else:
-                # Success logic
-                pass 
-                
-            # Check for output ONLY if successful or to diagnose
-            base_name_no_ext = os.path.splitext(os.path.basename(receptor_filename))[0]
-            base_dir = os.path.dirname(receptor_filename)
-            
-            folder_name_1 = f"{os.path.basename(receptor_filename)}_out"
-            folder_name_2 = f"{base_name_no_ext}_out"
-            
-            possible_folders = [
-                os.path.join(base_dir, folder_name_1),
-                os.path.join(base_dir, folder_name_2)
-            ]
-            
-            output_folder = next((f for f in possible_folders if os.path.exists(f)), None)
-
-            if output_folder:
-                fpocket_pockets_dir = os.path.join(output_folder, "pockets")
-                if os.path.exists(fpocket_pockets_dir):
-                    # Move/Copy relevant pockets to our centralized dir
-                    found_pockets = [f for f in os.listdir(fpocket_pockets_dir) if f.endswith(".pdb")]
-                    for p in found_pockets:
-                        src = os.path.join(fpocket_pockets_dir, p)
-                        dst = os.path.join(fpocket_storage_dir, p)
-                        shutil.copy(src, dst)
-                        final_pockets_list.append(p)
-                        
-                    print(f"Auto-detection finished. Found {len(final_pockets_list)} pockets.")
-                    if not final_pockets_list:
-                        print(f"⚠️ No pockets found!)")
-                else:
-                    print(f"Warning: pockets subdirectory not found in {output_folder}")
-            else:
-                 if result.returncode == 0:
-                     print("Error: fpocket finished but output folder not found.")
-                
-        except Exception as e:
-             print(f"Unexpected error running fpocket: {e}")
-
-    elif detection_mode == "Manual Upload":
-        print(f"\n--- Upload Manual Pocket PDB ---")
-        uploaded_p = files.upload()
-        if uploaded_p:
-            for p_file in uploaded_p.keys():
-                match = re.search(r'^(.*?)\s?\(\d+\)(\.[^.]*)?$', p_file)
-                if match:
-                    clean_name = match.group(1) + (match.group(2) if match.group(2) else "")
-                    print(f"Detected duplicate upload: {p_file} -> overwriting {clean_name}")
-                else:
-                    clean_name = p_file
-
-                target_path = os.path.join(fpocket_storage_dir, clean_name)
-                if os.path.exists(target_path):
-                    os.remove(target_path)
-                
-                os.rename(p_file, target_path)
-                
-                if clean_name not in final_pockets_list:
-                    final_pockets_list.append(clean_name)
-                    
-            print(f"Manual upload finished. Available pockets: {len(final_pockets_list)}")
-
-    # --- 3. Visualization & Selection ---
-    if final_pockets_list:
-        print("\n--- Pocket Selection & Visualization ---")
-        
-        pocket_dropdown = widgets.Dropdown(
-            options=sorted(final_pockets_list),
-            description='Select Pocket:',
-            disabled=False,
-        )
-
-        def view_pockets(selected_pocket_file):
-            view = py3Dmol.view(width=800, height=600)
-            
-            # Receptor
-            with open(receptor_filename, 'r') as f:
-                view.addModel(f.read(), "pdb")
-            view.setStyle({}) 
-            view.addSurface(py3Dmol.SES, {'opacity': 0.3, 'color': 'white'})
-            
-            colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#008000', '#800000']
-            
-            for i, p_file in enumerate(sorted(final_pockets_list)):
-                full_path = os.path.join(fpocket_storage_dir, p_file)
-                if os.path.exists(full_path):
-                    with open(full_path, 'r') as f:
-                        view.addModel(f.read(), "pdb")
-                    
-                    match = re.search(r'(\d+)', p_file)
-                    label_text = match.group(1) if match else p_file
-                    
-                    is_selected = (p_file == selected_pocket_file)
-                    
-                    if is_selected:
-                         color = 'red'
-                         opacity = 1.0
-                         label_style = {'fontSize': 18, 'fontColor': 'red', 'backgroundColor': 'white', 'backgroundOpacity': 0.8, 'border': '2px solid red'}
-                    else:
-                        color = colors[i % len(colors)]
-                        opacity = 0.6
-                        label_style = {'fontSize': 12, 'fontColor': 'black', 'backgroundColor': 'white', 'backgroundOpacity': 0.5}
-
-                    view.setStyle({'model': -1}, {'sphere': {'color': color, 'opacity': opacity}})
-                    view.addLabel(label_text, label_style, {'model': -1})
-
-            view.zoomTo()
-            view.show()
-            
-        display(widgets.interactive(view_pockets, selected_pocket_file=pocket_dropdown))
-    else:
-        print("No pockets available to select.")
-
 #@title 4. Pocket Extraction, Manual Adjustment & Box Generation
 #@markdown This step calculates the initial box, allows manual adjustment with +/- buttons, and then extracts the final pocket.
 
@@ -361,6 +125,54 @@ if __name__ == "__main__":
     except subprocess.CalledProcessError as e:
         return None, None, False
 
+def get_pocket_volume_hull(pocket_pdb_path):
+    """Calculates Convex Hull volume of C-alpha atoms for visualization."""
+    script_content = f"""
+import sys
+import numpy as np
+from Bio.PDB import PDBParser
+from scipy.spatial import ConvexHull
+
+def calc_vol(pdb_file):
+    try:
+        parser = PDBParser(QUIET=True)
+        structure = parser.get_structure("struct", pdb_file)
+        # Use all atoms or CA? All atoms gives better "fill" volume usually.
+        points = []
+        for atom in structure.get_atoms():
+             points.append(atom.get_coord())
+             
+        if len(points) < 4:
+            print("VOL:0.0")
+            return
+            
+        hull = ConvexHull(points)
+        print(f"VOL:{{hull.volume}}")
+    except Exception as e:
+        print("VOL:0.0")
+
+if __name__ == "__main__":
+    calc_vol(sys.argv[1])
+"""
+    script_name = "calc_volume_isolated.py"
+    with open(script_name, "w") as f:
+        f.write(script_content)
+        
+    python_exe = "/usr/local/envs/FrankPEPstein/bin/python"
+    if not os.path.exists(python_exe): python_exe = sys.executable
+
+    try:
+        result = subprocess.run(
+            [python_exe, script_name, pocket_pdb_path],
+            capture_output=True, text=True, check=True
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("VOL:"):
+                return float(line.split(":")[1])
+    except:
+        pass
+    return 0.0
+
 # --- Custom Widget Helpers ---
 
 def create_control_group(label, initial_val, step, color_hex):
@@ -380,8 +192,8 @@ def create_control_group(label, initial_val, step, color_hex):
     # We'll use the button_style for generic look, but wrap in a colored box.
     # User requested ARROWS. FontAwesome icons failed to load. Using Unicode.
     
-    minus_button = widgets.Button(description='◀', layout=btn_layout)
-    plus_button = widgets.Button(description='▶', layout=btn_layout)
+    minus_button = widgets.Button(description='\u25c0', layout=btn_layout)
+    plus_button = widgets.Button(description='\u25b6', layout=btn_layout)
     
     # minus_button.style.button_color = '#e0e0e0' # Causing contrast issues in dark mode
     # plus_button.style.button_color = '#e0e0e0'
@@ -412,8 +224,8 @@ def create_control_group(label, initial_val, step, color_hex):
 controls = {}
 
 # --- Logic ---
-viz_output = widgets.Output()
-output_log = widgets.Output()
+viz_output = widgets.Output() # Holds the 3D widget
+output_log = widgets.Output() # Holds text logs
 
 def initialize_ui(b):
     output_log.clear_output()
@@ -438,7 +250,7 @@ def initialize_ui(b):
         size = [20.0, 20.0, 20.0]
 
     cx, cy, cz = center
-    sx, sy, sz = size
+    sx, sy, sz = size # Defaults
 
     # 2. Build Control Rows (Reset controls)
     # X Axis (Red)
@@ -485,47 +297,65 @@ def initialize_ui(b):
         display(ui_container)
     
     # Trigger first viz
-    update_visual(None)
+    # We create a new view initially
+    update_visual(None, create_new=True)
 
 
-def update_visual(b):
+def update_visual(b, create_new=False):
+    # To Preserve POV: We can avoid calling zoomTo() every time.
+    
     viz_output.clear_output(wait=True)
     with viz_output:
         if 'cx' not in controls: return
         
-        # Get Current Values
+        # Get Values
         cx = controls['cx'].value; sx = controls['sx'].value
         cy = controls['cy'].value; sy = controls['sy'].value
         cz = controls['cz'].value; sz = controls['sz'].value
         
-        # Load View
+        # Setup View
         view = py3Dmol.view(width=800, height=600)
         
-        # 1. ADD POCKET ONLY
-        # We need the path. Using the one we calculated/detected
+        # 1. Expanded Pocket (Cartoon) - The one with 3A buffer
+        temp_pocket_path = os.path.join(pockets_dir, "temp_calc.pdb")
+        if os.path.exists(temp_pocket_path):
+            with open(temp_pocket_path, 'r') as f:
+                view.addModel(f.read(), "pdb")
+            # Cartoon Representation
+            view.setStyle({'model': -1}, {'cartoon': {'color': 'cyan', 'opacity': 0.8}})
+        
+        # 2. Original Fpocket (White Surface)
         selected_pocket = pocket_dropdown.value
-        # If 'Auto', we might be using the raw one. If 'Manual', same.
-        # But wait, we want to see the pocket relative to the box.
-        # Ideally we use the 'temp_calc.pdb' if it was valid, or the source.
-        # Let's use source for visualization to avoid confusion
         src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
         if os.path.exists(src_pocket_path):
              with open(src_pocket_path, 'r') as f:
                 view.addModel(f.read(), "pdb")
-             # Show Atoms nicely
-             view.setStyle({'stick':{'colorscheme':'greenCarbon'}})
-             view.addSurface(py3Dmol.SES, {'opacity': 0.6, 'color': 'white'})
-        
-        # 2. ADD GRIDBOX
-        # User requested: "caras con colores pero transparente"
+             # White Surface
+             view.addSurface(py3Dmol.SES, {'opacity': 0.5, 'color': 'white'}, {'model': -1})
+             # Hide atoms of this one, just surface
+             view.setStyle({'model': -1}, {}) 
+             
+             # Calculate Volume
+             vol = get_pocket_volume_hull(src_pocket_path)
+             print(f"Original Pocket Volume (Convex Hull): {vol:.2f} A^3")
+             
+             # 3. Volume Representation (Red Surface) on *Original Pocket* as requested
+             # "Volume that is between residues of fpocket file as color red"
+             # Since it's the "original fpocket" model (index -1 still if sequentially added),
+             # we add another surface? py3Dmol surfaces on same model might blend or fail.
+             # Let's try adding it:
+             view.addSurface(py3Dmol.SAS, {'opacity': 0.3, 'color': 'red'}, {'model': -1})
+
+        # 4. Gridbox
+        # Box container
         view.addBox({
             'center': {'x': cx, 'y': cy, 'z': cz},
             'dimensions': {'w': sx, 'h': sy, 'd': sz},
-            'color': 'cyan',   # Single color for the box itself
-            'opacity': 0.4,    # Transparent
-            'wireframe': False # Solid faces
+            'color': 'cyan',
+            'opacity': 0.2,
+            'wireframe': False
         })
-        # Add wireframe on top for definition?
+        # Wireframe Edges
         view.addBox({
             'center': {'x': cx, 'y': cy, 'z': cz},
             'dimensions': {'w': sx, 'h': sy, 'd': sz},
@@ -533,7 +363,9 @@ def update_visual(b):
             'wireframe': True
         })
 
-        view.zoomTo()
+        if create_new:
+            view.zoomTo() # Only zoom on first load!
+            
         view.show()
 
 def finalize_process(b):
@@ -542,7 +374,6 @@ def finalize_process(b):
         if 'cx' not in controls: return
         print("Finalizing extraction with custom box...")
         
-        # 1. Use user adjusted values
         final_center = [controls['cx'].value, controls['cy'].value, controls['cz'].value]
         final_size   = [controls['sx'].value, controls['sy'].value, controls['sz'].value]
         
@@ -553,14 +384,15 @@ def finalize_process(b):
         
         mode = "extract" if detection_mode == "Auto Detect" else "direct"
         
-        # Run extraction logic again to ensure clean PDB
+        # IMPORTANT: We generate the pocket.pdb WITH the 3A buffer logic (via extract mode defaults/logic)
+        # We RE-RUN the processing to ensure cleanly generated file
         _, _, success = run_processing_isolated(
             receptor_filename, src_pocket_path, final_pocket_path, mode=mode, buffer=0.0
         )
         
         if success:
-            print(f"✅ Box Center: {final_center}")
-            print(f"✅ Box Size:   {final_size}")
+            print(f"\u2705 Box Center: {final_center}")
+            print(f"\u2705 Box Size:   {final_size}")
             
             # Save State
             global box_center, box_size, extracted_pocket_path
@@ -578,7 +410,7 @@ def finalize_process(b):
             try:
                 import shutil
                 shutil.copy(final_pocket_path, root_pocket)
-                print(f"✅ Ready! (Copied to {root_pocket})")
+                print(f"\u2705 Ready! (Copied to {root_pocket})")
             except: pass
         else:
             print("Error saving final pocket.")

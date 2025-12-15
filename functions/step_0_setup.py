@@ -63,7 +63,7 @@ def run_setup():
         env_path = "/usr/local/envs/FrankPEPstein"
         if not os.path.exists(env_path):
              # Added 'pigz' to the package list
-             subprocess.run("mamba create -n FrankPEPstein -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina pigz scipy scikit-learn python=3.10 salilab::modeller > /dev/null 2>&1", shell=True, check=True)
+             subprocess.run("mamba create -n FrankPEPstein -q -y -c conda-forge -c salilab openbabel biopython fpocket joblib tqdm py3dmol vina pigz scipy scikit-learn matplotlib python=3.10 salilab::modeller > /dev/null 2>&1", shell=True, check=True)
         
         # Configure Path
         site_packages = f"{env_path}/lib/python3.10/site-packages"

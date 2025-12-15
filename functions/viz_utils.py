@@ -3,16 +3,18 @@ import os
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle, Rectangle
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from scipy.spatial import ConvexHull, Delaunay
 from io import BytesIO
 
 # --- Constants ---
 ATOM_RADII = {'C': 1.7, 'N': 1.55, 'O': 1.52, 'S': 1.8, 'H': 1.2, 'P': 1.8}
-ATOM_COLORS = {'C': '#00FF00', 'N': 'blue', 'O': 'red', 'S': 'yellow', 'P': 'orange', 'H': 'white'} # Carbon Green as requested
+ATOM_COLORS = {'C': '#00FF00', 'N': 'blue', 'O': 'red', 'S': 'yellow', 'P': 'orange', 'H': 'white'} 
 
 def get_atom_data(pdb_file, atom_type=None):
     """
-    Parses PDB and returns list of dicts: {'x', 'y', 'z', 'element', 'name', 'resid'}
+    Parses PDB and returns list of dicts: {'x', 'y', 'z', 'element', 'name', 'resid', 'chain'}
     """
     atoms = []
     if not os.path.exists(pdb_file):
@@ -33,245 +35,197 @@ def get_atom_data(pdb_file, atom_type=None):
                     if not element:
                         element = name[0] # Fallback
                     
-                    resid = line[22:26].strip()
+                    resid = int(line[22:26].strip())
+                    chain = line[21:22].strip()
                     
                     atoms.append({
                         'x': x, 'y': y, 'z': z,
                         'element': element,
                         'name': name,
-                        'resid': resid
+                        'resid': resid,
+                        'chain': chain
                     })
                 except ValueError:
                     pass
     return atoms
 
-def transform_atoms(atoms, center, rot_matrix):
-    """Applies centering and rotation to atom list."""
-    coords = np.array([[a['x'], a['y'], a['z']] for a in atoms])
-    if len(coords) == 0: return []
+def get_points_in_hull(hull, density=1.0):
+    """
+    Generates a grid of points inside a ConvexHull.
+    """
+    # Bounding box
+    min_x, min_y, min_z = hull.points[hull.vertices].min(axis=0)
+    max_x, max_y, max_z = hull.points[hull.vertices].max(axis=0)
     
-    centered = coords - center
-    aligned = np.dot(centered, rot_matrix)
+    # Grid
+    grid_x, grid_y, grid_z = np.mgrid[min_x:max_x:density, min_y:max_y:density, min_z:max_z:density]
+    grid_points = np.vstack([grid_x.ravel(), grid_y.ravel(), grid_z.ravel()]).T
     
-    new_atoms = []
-    for i, atom in enumerate(atoms):
-        new_a = atom.copy()
-        new_a['x'], new_a['y'], new_a['z'] = aligned[i]
-        new_atoms.append(new_a)
-    return new_atoms
-
-def align_perspective(pocket_atoms):
-    """Calculates rotation matrix based on pocket PCA + Isometric tilt."""
-    coords = np.array([[a['x'], a['y'], a['z']] for a in pocket_atoms])
-    if len(coords) < 3:
-        return np.eye(3), np.mean(coords, axis=0) if len(coords)>0 else [0,0,0]
-        
-    center = np.mean(coords, axis=0)
-    centered = coords - center
-    cov = np.cov(centered, rowvar=False)
-    evals, evecs = np.linalg.eigh(cov)
-    # PCA aligns with principal axes. Often flat.
-    idx = evals.argsort()[::-1]
-    evecs = evecs[:, idx]
+    # Check identifying using Delaunay
+    # Using scipy.spatial.Delaunay to check if points are in hull (simplex check)
+    # This can be slow for large grids.
+    # Alternatives: Just use the hull equations?
     
-    # --- ADD ISOMETRIC-LIKE OFFSET ---
-    # We apply a rigid rotation AFTER aligning to PCA to show depth.
-    # Rotation X (45 deg) * Rotation Y (30 deg)
+    delaunay = Delaunay(hull.points[hull.vertices])
+    valid = delaunay.find_simplex(grid_points) >= 0
     
-    # Rx (45)
-    theta_x = np.radians(45)
-    rx = np.array([
-        [1, 0, 0],
-        [0, np.cos(theta_x), -np.sin(theta_x)],
-        [0, np.sin(theta_x), np.cos(theta_x)]
-    ])
-    
-    # Ry (30)
-    theta_y = np.radians(30)
-    ry = np.array([
-        [np.cos(theta_y), 0, np.sin(theta_y)],
-        [0, 1, 0],
-        [-np.sin(theta_y), 0, np.cos(theta_y)]
-    ])
-    
-    iso_rot = np.dot(rx, ry)
-    
-    # Final Matrix = PCA * Isometric
-    # Note: evecs columns are axes. Mapping world to aligned space.
-    # Transpose of evecs rotates vector TO principal frame.
-    # Then we apply iso_rot.
-    # Combined = Iso * (PCA_Transpose) 
-    # But here we return a matrix 'rot_matrix' such that: v_new = dot(v_old - c, rot_matrix)
-    # So we want M such that v_new = (v_old - c) @ M
-    
-    # evecs maps local -> world. evecs.T maps world -> local.
-    # If we want v_local = (v-c) @ evecs (if row vectors?)
-    # Numpy eigh returns column eigenvectors. 
-    # So v_world = evecs @ v_local. v_local = evecs.T @ v_world.
-    # If using row vectors: v_local^T = v_world^T @ evecs
-    
-    # We want to rotate the cloud. 
-    # v_aligned = (v-c) @ evecs   (This aligns PC1 to X, PC2 to Y, PC3 to Z approximately)
-    # Then v_iso = v_aligned @ iso_rot.T
-    
-    final_matrix = np.dot(evecs, iso_rot.T)
-    
-    return final_matrix, center
+    return grid_points[valid]
 
 def render_static_view(receptor_path, pocket_path, box_center, box_size, fragments_paths, title="Processing..."):
+    print("Loading visualization...")
+    
     # 1. Load Data
+    # Pocket: Use CA for hull calc? Or all atoms for volume?
+    # User said: "between residues of fpocket file" -> better use all atoms for volume definition
     pocket_atoms = get_atom_data(pocket_path)
     if not pocket_atoms: return None
     
-    # receptor_atoms = get_atom_data(receptor_path) # Disabled for speed
-    receptor_atoms = []
+    pocket_coords = np.array([[a['x'], a['y'], a['z']] for a in pocket_atoms])
     
-    # 2. Calculate Alignment (Focus on Pocket)
-    rot_matrix, center = align_perspective(pocket_atoms)
+    # Receptor: Extract CA for Backbone Trace & Surface
+    # Loading full receptor can be slow. 
+    # Optimization: Only load receptor atoms NEAR the pocket?
+    # For now, load all CA.
+    receptor_atoms_ca = get_atom_data(receptor_path, atom_type='CA')
     
-    # 3. Transform All
-    p_aligned = transform_atoms(pocket_atoms, center, rot_matrix)
-    r_aligned = transform_atoms(receptor_atoms, center, rot_matrix)
+    # Filter receptor CA to be somewhat near pocket (e.g. within 30A) to keep plot sane?
+    # Or just plot all? Plotting whole protein surface in Matplotlib might be heavy.
+    # Let's keep it safe: Filter CA execution.
+    p_center = np.mean(pocket_coords, axis=0) if len(pocket_coords)>0 else [0,0,0]
     
-    frag_aligned_list = []
+    filtered_ca = []
+    for ca in receptor_atoms_ca:
+         d2 = (ca['x']-p_center[0])**2 + (ca['y']-p_center[1])**2 + (ca['z']-p_center[2])**2
+         if d2 < 900: # 30A radius
+             filtered_ca.append(ca)
+    
+    receptor_coords = np.array([[a['x'], a['y'], a['z']] for a in filtered_ca])
+
+    # 2. Setup Plot
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_facecolor('black')
+    fig.patch.set_facecolor('black')
+    
+    # 3. Protein Surface (White)
+    # Using ConvexHull of nearby CA atoms
+    if len(receptor_coords) > 4:
+        try:
+            hull_r = ConvexHull(receptor_coords)
+            # Plot Trisurf
+            # Simplification: Plot simpler surface or just the triangulation
+            ax.plot_trisurf(receptor_coords[:,0], receptor_coords[:,1], receptor_coords[:,2], 
+                            triangles=hull_r.simplices, color='white', alpha=0.3, edgecolor='none', shade=True)
+        except: pass
+        
+    # 4. Backbone Trace (Thick White Line)
+    # Sort by chain, then resid
+    # Convert to list for sorting
+    filtered_ca.sort(key=lambda x: (x['chain'], x['resid']))
+    
+    # Split by chain to avoid connecting disjoint chains
+    current_chain = None
+    chain_coords = []
+    
+    for ca in filtered_ca:
+        if current_chain is None: current_chain = ca['chain']
+        
+        if ca['chain'] != current_chain:
+            # Draw previous
+            if len(chain_coords) > 1:
+                cc = np.array(chain_coords)
+                ax.plot(cc[:,0], cc[:,1], cc[:,2], color='white', linewidth=3, alpha=0.8)
+            chain_coords = []
+            current_chain = ca['chain']
+            
+        chain_coords.append([ca['x'], ca['y'], ca['z']])
+        
+    # Draw last
+    if len(chain_coords) > 1:
+        cc = np.array(chain_coords)
+        ax.plot(cc[:,0], cc[:,1], cc[:,2], color='white', linewidth=3, alpha=0.8)
+
+    # 5. Pocket Volume (Red Spheres)
+    # Hull of pocket atoms
+    if len(pocket_coords) > 4:
+        try:
+            hull_p = ConvexHull(pocket_coords)
+            # Generate internal points
+            # Density approx 1.5A for speed vs look
+            internal_pts = get_points_in_hull(hull_p, density=2.0)
+            
+            if len(internal_pts) > 0:
+                ax.scatter(internal_pts[:,0], internal_pts[:,1], internal_pts[:,2], 
+                           color='red', s=20, alpha=0.3, edgecolors='none', label='Volume')
+        except: pass
+
+    # 6. Peptide Candidates
     for fp in fragments_paths:
         f_atoms = get_atom_data(fp)
-        frag_aligned_list.append(transform_atoms(f_atoms, center, rot_matrix))
-        
-    # Transform Gridbox Corners
+        f_coords = np.array([[a['x'], a['y'], a['z']] for a in f_atoms])
+        if len(f_coords) > 0:
+            # Sticks
+            # Simple connectivity based on distance (neighbor graph)
+            # Matplotlib 3D lines
+            # Just plotting atoms for now? Or basic bond logic
+            
+            # Draw atoms
+            colors = [ATOM_COLORS.get(a['element'], 'gray') for a in f_atoms]
+            ax.scatter(f_coords[:,0], f_coords[:,1], f_coords[:,2], c=colors, s=30, alpha=1.0)
+            
+            # Draw bonds (simple loop)
+            for i in range(len(f_atoms)):
+                for j in range(i+1, len(f_atoms)):
+                    p1 = f_coords[i]
+                    p2 = f_coords[j]
+                    dist = np.linalg.norm(p1-p2)
+                    if dist < 1.8: # Bond length
+                        ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color='white', linewidth=1)
+
+    # 7. Gridbox (Red Corners/Edges)
     cx, cy, cz = box_center
     sx, sy, sz = box_size
-    corners = [
-        [cx-sx/2, cy-sy/2, cz-sz/2], [cx+sx/2, cy-sy/2, cz-sz/2],
-        [cx-sx/2, cy+sy/2, cz-sz/2], [cx+sx/2, cy+sy/2, cz-sz/2],
-        [cx-sx/2, cy-sy/2, cz+sz/2], [cx+sx/2, cy-sy/2, cz+sz/2],
-        [cx-sx/2, cy+sy/2, cz+sz/2], [cx+sx/2, cy+sy/2, cz+sz/2]
-    ]
-    corners_aligned = np.dot(np.array(corners) - center, rot_matrix)
     
-    # 4. Plot
-    fig = plt.figure(figsize=(10, 8)) # Larger
-    ax = fig.add_subplot(111)
+    # Draw corners/edges? Use wireframe box
+    # Plot transparent box?
+    # Just red edges
     
-    # Z-sorting for "3D-like" 2D plot
-    # We collect all render operations and sort by Z depth
-    render_queue = []
-    
-    # A. Gridbox Lines (Draw first/behind or make explicit?)
-    # Lines don't occlude well in simple 2D scatter, check Z.
-    # We will draw gridbox on top usually or behind? Pymol draws on top often.
-    # Let's add segments to queue.
-    edges = [
-        (0,1), (1,3), (3,2), (2,0), # Back face? depends on rot.
-        (4,5), (5,7), (7,6), (6,4), # Front face
-        (0,4), (1,5), (2,6), (3,7)  # Connecting
-    ]
-    
-    for s, e in edges:
-        p1, p2 = corners_aligned[s], corners_aligned[e]
-        z_avg = (p1[2] + p2[2])/2
-        render_queue.append({
-            'type': 'line', 'z': z_avg,
-            'x': [p1[0], p2[0]], 'y': [p1[1], p2[1]],
-            'color': 'red', 'width': 3
-        })
+    def plot_cube(center, size, ax):
+        ox, oy, oz = center
+        l, w, h = size
         
-    # B. Pocket (Surfaces)
-    # Receptor commented out for speed
-    # for atom in r_aligned: ...
+        x = [ox-l/2, ox+l/2]
+        y = [oy-w/2, oy+w/2]
+        z = [oz-h/2, oz+h/2]
         
-    for atom in p_aligned:
-        render_queue.append({
-            'type': 'atom', 'z': atom['z'],
-            'x': atom['x'], 'y': atom['y'],
-            'r': 130 # Temporarily store raw atom
-        })
-        
-    # --- Calc Depth Range for Pocket Atoms ---
-    # We want to normalize Z for color/alpha
-    pocket_items = [i for i in render_queue if i['type']=='atom']
-    if pocket_items:
-        z_vals = [i['z'] for i in pocket_items]
-        z_min, z_max = min(z_vals), max(z_vals)
-        z_range = z_max - z_min if z_max != z_min else 1.0
-        
-        # Apply Depth Cues
-        # User requested: Celeste (Near/Front) -> White (Far/Back)
-        
-        for item in pocket_items:
-            # Normalize 0 (Back/Far) to 1 (Front/Near)
-            norm = (item['z'] - z_min) / z_range
-            
-            # Custom Gradient: White [1,1,1] --> Cyan [0,1,1]
-            # R goes from 1 to 0
-            # G stays 1
-            # B stays 1
-            r = 1.0 - (1.0 * norm)
-            g = 1.0
-            b = 1.0
-            rgba = (r, g, b, 1.0) # Alpha handled separately below
-            
-            # Alpha: Front=0.9, Back=0.3
-            alpha = 0.3 + (0.6 * norm)
-            
-            item['c'] = rgba
-            item['alpha'] = alpha
-            # item['r'] is 130. Slightly larger at front
-            item['r'] = 130 * (0.8 + 0.4*norm)
+        # Draw edges
+        # Bottom
+        ax.plot([x[0], x[1]], [y[0], y[0]], [z[0], z[0]], color='red', linewidth=2)
+        ax.plot([x[0], x[1]], [y[1], y[1]], [z[0], z[0]], color='red', linewidth=2)
+        ax.plot([x[0], x[0]], [y[0], y[1]], [z[0], z[0]], color='red', linewidth=2)
+        ax.plot([x[1], x[1]], [y[0], y[1]], [z[0], z[0]], color='red', linewidth=2)
+        # Top
+        ax.plot([x[0], x[1]], [y[0], y[0]], [z[1], z[1]], color='red', linewidth=2)
+        ax.plot([x[0], x[1]], [y[1], y[1]], [z[1], z[1]], color='red', linewidth=2)
+        ax.plot([x[0], x[0]], [y[0], y[1]], [z[1], z[1]], color='red', linewidth=2)
+        ax.plot([x[1], x[1]], [y[0], y[1]], [z[1], z[1]], color='red', linewidth=2)
+        # Verticals
+        ax.plot([x[0], x[0]], [y[0], y[0]], [z[0], z[1]], color='red', linewidth=2)
+        ax.plot([x[1], x[1]], [y[0], y[0]], [z[0], z[1]], color='red', linewidth=2)
+        ax.plot([x[0], x[0]], [y[1], y[1]], [z[0], z[1]], color='red', linewidth=2)
+        ax.plot([x[1], x[1]], [y[1], y[1]], [z[0], z[1]], color='red', linewidth=2)
 
-    # C. Fragments (Sticks)
-    # Need connectivity. Simple distance check < 1.6A
-    for frag in frag_aligned_list:
-        # Atoms
-        for i, atom in enumerate(frag):
-            elem = atom['element']
-            color = ATOM_COLORS.get(elem, 'gray')
-            if elem == 'C': color = '#00FF00' # Explicit Green Carbon
-            
-            render_queue.append({
-                'type': 'atom', 'z': atom['z'],
-                'x': atom['x'], 'y': atom['y'],
-                'r': 40, # Smaller than surface
-                'c': color, 'alpha': 1.0
-            })
-            
-            # Bonds (Forward check)
-            for j in range(i+1, len(frag)):
-                atom2 = frag[j]
-                # Distance
-                d2 = (atom['x']-atom2['x'])**2 + (atom['y']-atom2['y'])**2 + (atom['z']-atom2['z'])**2
-                if d2 < 2.6: # 1.6**2 ~ 2.56
-                    z_avg = (atom['z'] + atom2['z'])/2
-                    render_queue.append({
-                        'type': 'line', 'z': z_avg,
-                        'x': [atom['x'], atom2['x']], 'y': [atom['y'], atom2['y']],
-                        'color': 'white', 'width': 2 # Bond color usually gray/white
-                    })
+    plot_cube(box_center, box_size, ax)
 
-    # 5. Execute Sort and Draw
-    render_queue.sort(key=lambda item: item['z'])
-    
-    for item in render_queue:
-        if item['type'] == 'atom':
-            ax.scatter(item['x'], item['y'], s=item['r'], color=item['c'], alpha=item['alpha'], edgecolors='none')
-        elif item['type'] == 'line':
-            ax.plot(item['x'], item['y'], c=item['color'], linewidth=item['width'], alpha=0.8)
-
-    # 6. Zoom / Limits
-    # Focus on Gridbox Size + Padding
-    max_dim = max(sx, sy, sz)
-    limit = (max_dim / 2) * 1.5 # 1.5x zoom padding
-    
-    ax.set_xlim(-limit, limit)
-    ax.set_ylim(-limit, limit)
-    
-    ax.set_aspect('equal')
+    # Camera
     ax.set_axis_off()
     ax.set_title(title, color='white')
     
-    # Dark Background
-    fig.patch.set_facecolor('black')
-    ax.set_facecolor('black')
+    # Auto-center view on pocket
+    max_range = max(box_size) * 1.5
+    ax.set_xlim(cx - max_range/2, cx + max_range/2)
+    ax.set_ylim(cy - max_range/2, cy + max_range/2)
+    ax.set_zlim(cz - max_range/2, cz + max_range/2)
     
     buf = BytesIO()
     plt.savefig(buf, format='png', facecolor='black')

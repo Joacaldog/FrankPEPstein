@@ -26,7 +26,9 @@ def get_conda_cmd():
 
 def main():
     parser = argparse.ArgumentParser(description="FrankPEPstein Local Setup")
-    parser.add_argument("-k", "--key", default="MODELIRANJE", help="Modeller License Key")
+    # Key is now hardcoded default
+    modeller_key = "MODELIRANJE"
+    
     args = parser.parse_args()
     
     repo_root = os.getcwd()
@@ -54,7 +56,7 @@ def main():
         log(f"Creating Conda Environment '{env_name}'... (This may take a while)", parse_color=GREEN)
         cmd = (
             f"{conda_cmd} create -n {env_name} -y -c conda-forge -c salilab "
-            "openbabel biopython fpocket joblib tqdm py3dmol vina pigz scipy scikit-learn python=3.10 salilab::modeller"
+            "openbabel biopython fpocket joblib tqdm py3dmol vina pigz scipy scikit-learn matplotlib python=3.10 salilab::modeller"
         )
         log(f"Running: {cmd}")
         ret = subprocess.run(cmd, shell=True)
@@ -150,7 +152,7 @@ def main():
         config_script = os.path.join(repo_root, "scripts", "configure_modeller.py")
         
         # Using 'conda run' to execute inside the env
-        modeller_cmd = f"{conda_cmd} run -n {env_name} python {config_script} --key {args.key}"
+        modeller_cmd = f"{conda_cmd} run -n {env_name} python {config_script}"
         # configure_modeller.py currently doesn't take args, it has a default. 
         # But wait, looking at configure_modeller.py source...
         # It calls `configure_modeller(license_key='MODELIRANJE')` in main block.
