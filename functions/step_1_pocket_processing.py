@@ -55,7 +55,7 @@ detect_btn = widgets.Button(description="Run fpocket", button_style='info')
 pocket_dropdown = widgets.Dropdown(description="Select Pocket:", options=[], disabled=True)
 
 # Manual Upload Widgets
-upload_btn = widgets.FileUpload(description="Upload Pocket PDB", accept=".pdb", multiple=False)
+upload_btn = widgets.FileUpload(description="Upload Pocket PDB", accept=".pdb", multiple=False, layout=widgets.Layout(width='300px'))
 
 # Containers
 log_output_1 = widgets.Output()
