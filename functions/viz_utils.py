@@ -72,7 +72,7 @@ def get_points_in_hull(hull, density=1.0):
     return grid_points[valid]
 
 def render_static_view(receptor_path, pocket_path, box_center, box_size, fragments_paths, title="Processing..."):
-    print("Loading visualization...")
+    # print("Loading visualization...")
     
     # 1. Load Data
     # Pocket: Use CA for hull calc? Or all atoms for volume?
@@ -82,68 +82,12 @@ def render_static_view(receptor_path, pocket_path, box_center, box_size, fragmen
     
     pocket_coords = np.array([[a['x'], a['y'], a['z']] for a in pocket_atoms])
     
-    # Receptor: Extract CA for Backbone Trace & Surface
-    # Loading full receptor can be slow. 
-    # Optimization: Only load receptor atoms NEAR the pocket?
-    # For now, load all CA.
-    receptor_atoms_ca = get_atom_data(receptor_path, atom_type='CA')
     
-    # Filter receptor CA to be somewhat near pocket (e.g. within 30A) to keep plot sane?
-    # Or just plot all? Plotting whole protein surface in Matplotlib might be heavy.
-    # Let's keep it safe: Filter CA execution.
-    p_center = np.mean(pocket_coords, axis=0) if len(pocket_coords)>0 else [0,0,0]
-    
-    filtered_ca = []
-    for ca in receptor_atoms_ca:
-         d2 = (ca['x']-p_center[0])**2 + (ca['y']-p_center[1])**2 + (ca['z']-p_center[2])**2
-         if d2 < 900: # 30A radius
-             filtered_ca.append(ca)
-    
-    receptor_coords = np.array([[a['x'], a['y'], a['z']] for a in filtered_ca])
-
     # 2. Setup Plot
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
     ax.set_facecolor('black')
     fig.patch.set_facecolor('black')
-    
-    # 3. Protein Surface (White)
-    # Using ConvexHull of nearby CA atoms
-    if len(receptor_coords) > 4:
-        try:
-            hull_r = ConvexHull(receptor_coords)
-            # Plot Trisurf
-            # Simplification: Plot simpler surface or just the triangulation
-            ax.plot_trisurf(receptor_coords[:,0], receptor_coords[:,1], receptor_coords[:,2], 
-                            triangles=hull_r.simplices, color='white', alpha=0.3, edgecolor='none', shade=True)
-        except: pass
-        
-    # 4. Backbone Trace (Thick White Line)
-    # Sort by chain, then resid
-    # Convert to list for sorting
-    filtered_ca.sort(key=lambda x: (x['chain'], x['resid']))
-    
-    # Split by chain to avoid connecting disjoint chains
-    current_chain = None
-    chain_coords = []
-    
-    for ca in filtered_ca:
-        if current_chain is None: current_chain = ca['chain']
-        
-        if ca['chain'] != current_chain:
-            # Draw previous
-            if len(chain_coords) > 1:
-                cc = np.array(chain_coords)
-                ax.plot(cc[:,0], cc[:,1], cc[:,2], color='white', linewidth=3, alpha=0.8)
-            chain_coords = []
-            current_chain = ca['chain']
-            
-        chain_coords.append([ca['x'], ca['y'], ca['z']])
-        
-    # Draw last
-    if len(chain_coords) > 1:
-        cc = np.array(chain_coords)
-        ax.plot(cc[:,0], cc[:,1], cc[:,2], color='white', linewidth=3, alpha=0.8)
 
     # 5. Pocket Volume (Red Spheres)
     # Hull of pocket atoms
@@ -200,20 +144,20 @@ def render_static_view(receptor_path, pocket_path, box_center, box_size, fragmen
         
         # Draw edges
         # Bottom
-        ax.plot([x[0], x[1]], [y[0], y[0]], [z[0], z[0]], color='red', linewidth=2)
-        ax.plot([x[0], x[1]], [y[1], y[1]], [z[0], z[0]], color='red', linewidth=2)
-        ax.plot([x[0], x[0]], [y[0], y[1]], [z[0], z[0]], color='red', linewidth=2)
-        ax.plot([x[1], x[1]], [y[0], y[1]], [z[0], z[0]], color='red', linewidth=2)
+        ax.plot([x[0], x[1]], [y[0], y[0]], [z[0], z[0]], color='white', linewidth=2)
+        ax.plot([x[0], x[1]], [y[1], y[1]], [z[0], z[0]], color='white', linewidth=2)
+        ax.plot([x[0], x[0]], [y[0], y[1]], [z[0], z[0]], color='white', linewidth=2)
+        ax.plot([x[1], x[1]], [y[0], y[1]], [z[0], z[0]], color='white', linewidth=2)
         # Top
-        ax.plot([x[0], x[1]], [y[0], y[0]], [z[1], z[1]], color='red', linewidth=2)
-        ax.plot([x[0], x[1]], [y[1], y[1]], [z[1], z[1]], color='red', linewidth=2)
-        ax.plot([x[0], x[0]], [y[0], y[1]], [z[1], z[1]], color='red', linewidth=2)
-        ax.plot([x[1], x[1]], [y[0], y[1]], [z[1], z[1]], color='red', linewidth=2)
+        ax.plot([x[0], x[1]], [y[0], y[0]], [z[1], z[1]], color='white', linewidth=2)
+        ax.plot([x[0], x[1]], [y[1], y[1]], [z[1], z[1]], color='white', linewidth=2)
+        ax.plot([x[0], x[0]], [y[0], y[1]], [z[1], z[1]], color='white', linewidth=2)
+        ax.plot([x[1], x[1]], [y[0], y[1]], [z[1], z[1]], color='white', linewidth=2)
         # Verticals
-        ax.plot([x[0], x[0]], [y[0], y[0]], [z[0], z[1]], color='red', linewidth=2)
-        ax.plot([x[1], x[1]], [y[0], y[0]], [z[0], z[1]], color='red', linewidth=2)
-        ax.plot([x[0], x[0]], [y[1], y[1]], [z[0], z[1]], color='red', linewidth=2)
-        ax.plot([x[1], x[1]], [y[1], y[1]], [z[0], z[1]], color='red', linewidth=2)
+        ax.plot([x[0], x[0]], [y[0], y[0]], [z[0], z[1]], color='white', linewidth=2)
+        ax.plot([x[1], x[1]], [y[0], y[0]], [z[0], z[1]], color='white', linewidth=2)
+        ax.plot([x[0], x[0]], [y[1], y[1]], [z[0], z[1]], color='white', linewidth=2)
+        ax.plot([x[1], x[1]], [y[1], y[1]], [z[0], z[1]], color='white', linewidth=2)
 
     plot_cube(box_center, box_size, ax)
 
