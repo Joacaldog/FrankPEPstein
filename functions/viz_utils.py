@@ -166,7 +166,7 @@ def render_static_view(receptor_path, pocket_path, box_center, box_size, fragmen
     ax.set_title(title, color='white')
     
     # Auto-center view on pocket
-    max_range = max(box_size) * 1.5
+    max_range = max(box_size) * 0.8
     ax.set_xlim(cx - max_range/2, cx + max_range/2)
     ax.set_ylim(cy - max_range/2, cy + max_range/2)
     ax.set_zlim(cz - max_range/2, cz + max_range/2)

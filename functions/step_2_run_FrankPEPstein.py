@@ -12,6 +12,7 @@ import glob
 import subprocess
 import threading
 import multiprocessing
+import importlib # Added for reloading
 import ipywidgets as widgets
 from IPython.display import display
 
@@ -35,6 +36,9 @@ except ImportError:
     except ImportError:
         print("⚠️ Warning: viz_utils not found. Visualization will be disabled.")
         viz_utils = None
+    
+if viz_utils:
+    importlib.reload(viz_utils) # Force reload on cell run
 
 # --- Dependency Check ---
 try:
