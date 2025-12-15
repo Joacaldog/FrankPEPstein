@@ -45,16 +45,47 @@ def save_pipeline_state(data):
 receptor_upload_widget = widgets.FileUpload(description="Upload Receptor (pdb)", accept=".pdb", multiple=False, layout=widgets.Layout(width='300px'))
 receptor_status = widgets.Output()
 
+def get_uploaded_file_data(widget_value):
+    """Safe extraction for ipywidgets 7 and 8"""
+    if not widget_value: return None, None
+    
+    # Version 7: value is dict {filename: {content:..., metadata:...}}
+    if isinstance(widget_value, dict):
+        filename = list(widget_value.keys())[0]
+        file_data = widget_value[filename]
+        content = file_data['content']
+        # Try to get refined name from metadata if valid, else use key
+        if 'metadata' in file_data and 'name' in file_data['metadata']:
+             name = file_data['metadata']['name']
+        else:
+             name = filename
+        return name, content
+        
+    # Version 8: value is list [{'name':..., 'content':...}]
+    elif isinstance(widget_value, list):
+        file_data = widget_value[0]
+        return file_data['name'], file_data['content'] # v8 has memoryview content
+        
+    # Common Logic: Sanitize Name (remove " (1)", etc.)
+    # Example: "structure (1).pdb" -> "structure.pdb"
+    if name:
+        name = re.sub(r'\s*\(\d+\)', '', name)
+        
+    return name, content
+    
+    return None, None
+
+
 def handle_receptor_upload(change):
     receptor_status.clear_output()
     with receptor_status:
         if not receptor_upload_widget.value: return
-        # ipywidgets 7/8 compat
-        upl_file = list(receptor_upload_widget.value.values())[0] if isinstance(receptor_upload_widget.value, dict) else receptor_upload_widget.value[0]
-        content = upl_file['content']
-        with open(receptor_filename, "wb") as f:
-            f.write(content)
-        print("✅ Receptor uploaded successfully.")
+        
+        name, content = get_uploaded_file_data(receptor_upload_widget.value)
+        if content:
+            with open(receptor_filename, "wb") as f:
+                f.write(content)
+            print("✅ Receptor uploaded successfully.")
 
 receptor_upload_widget.observe(handle_receptor_upload, names='value')
 
@@ -132,13 +163,11 @@ def handle_upload(change):
     with log_output_1:
         if not upload_btn.value: return
         
-        # Get file
-        # ipywidgets 7 vs 8 compat logic
-        upl_file = list(upload_btn.value.values())[0] if isinstance(upload_btn.value, dict) else upload_btn.value[0]
-        
-        content = upl_file['content']
-        name = upl_file['name']
-        
+        name, content = get_uploaded_file_data(upload_btn.value)
+        if not name or not content:
+            print("Error parsing file upload.")
+            return
+
         dest = os.path.join(fpocket_storage_dir, name)
         with open(dest, "wb") as f:
             f.write(content)
