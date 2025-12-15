@@ -348,15 +348,37 @@ def combinator():
 
         dup_comb_list = []
         print("initiating combinations...")
-        combination_res_list = product(*equivalentRes_dup)
-        for combination in combination_res_list:
-            combination = list(set(combination))
-            dup_comb_list.append(combination)
+        print("initiating combinations...")
+        
+        # Calculate total possible combinations
+        total_stats = 1
+        for group in equivalentRes_dup:
+            total_stats *= len(group)
+            
+        dup_comb_list = []
+        
+        if total_stats <= MAX_COMBINATIONS:
+            # Small enough to generate all
+            combination_res_list = product(*equivalentRes_dup)
+            for combination in combination_res_list:
+                combination = list(set(combination))
+                dup_comb_list.append(combination)
+        else:
+            # Too many, use random sampling
+            print(f"Total combinations ({total_stats}) exceeds limit ({MAX_COMBINATIONS}). Random sampling...")
+            for _ in range(MAX_COMBINATIONS):
+                 # Pick random one from each group
+                 combination = [random.choice(group) for group in equivalentRes_dup]
+                 combination = list(set(combination))
+                 dup_comb_list.append(combination)
 
+        # Skip the original product line as we built dup_comb_list manually
         combination_res_list = list(product([single_res], dup_comb_list))
         print("combinations finished...")
         final_names_list = []
         len_comb = len(combination_res_list)
+        # Random sample again if strictly needed technically (though we just curbed it), 
+        # but logic dictates we might have up to MAX_COMBINATIONS now.
         if len_comb >= MAX_COMBINATIONS:
             combination_res_list = random.sample(combination_res_list, MAX_COMBINATIONS)
         for final_comb in tqdm(combination_res_list, total=len(combination_res_list), desc="Working on each combination...", position=0, leave=True):
