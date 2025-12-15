@@ -431,10 +431,12 @@ def initialize_ui(b):
     src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
     temp_pocket_path = os.path.join(pockets_dir, "temp_calc.pdb")
     
-    # Determine mode from toggle
-    mode = "extract" if mode_selector.value == "Auto Detect" else "direct"
+    # Determine mode: Always use 'extract' to ensure we generate a "Buffered Pocket" from the receptor
+    # even for manual uploads (treating them as a seed/definition). 
+    # The user explicitly requested "pocket.pdb con buffer de 3A".
+    mode = "extract" 
     
-    with output_log: print(f"Processing {selected_pocket}...")
+    with output_log: print(f"Processing {selected_pocket} (Generating buffered pocket)...")
     center, size, success = run_processing_isolated(receptor_filename, src_pocket_path, temp_pocket_path, mode=mode)
     
     if not success:
