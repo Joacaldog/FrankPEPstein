@@ -102,7 +102,7 @@ def main():
             print("No patch files in folder")
         elif len(patch_files) > 1:
             print(f"Running patch_clustering with kmer: {pep_size} ")
-            cmd_clustering = [sys.executable, f'{repo_folder}/scripts/patch_clustering.py', '-w', str(pep_size), '-t', str(threads), '-c', '2000']
+            cmd_clustering = [sys.executable, f'{repo_folder}/scripts/patch_clustering.py', '-w', str(pep_size), '-t', str(threads), '-c', '500']
             print(f"CMD: {' '.join(cmd_clustering)}")
             subprocess.run(cmd_clustering, check=True)
             
