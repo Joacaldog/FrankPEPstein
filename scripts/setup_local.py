@@ -173,7 +173,7 @@ def main():
             log("⚠️ Modeller configuration threw an error (maybe env not ready?). Check manually.", YELLOW)
 
     log(f"\n{'='*30}", GREEN)
-    log("✅ Setup Finished!", GREEN)
+    log("✅ Setup Finished!, please ignore crash warnings", GREEN)
     log(f"To run the pipeline:", GREEN)
     log(f"1. conda activate {env_name}", GREEN)
     log(f"2. python scripts/run_local.py ...", GREEN)

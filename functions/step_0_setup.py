@@ -262,7 +262,7 @@ def setup_external_tools(files_id=None):
     print(f"{'='*20}\n")
 
     clear_output()
-    print("✅ Setup Ready!")
+    print("✅ Setup Ready!, The kernel was restarted. Please ignore any crash warnings.")
 
 if __name__ == "__main__":
     run_setup()
