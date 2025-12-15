@@ -277,7 +277,7 @@ def process_and_box(receptor_file, pocket_file, output_file, mode, buffer_val):
              ns = NeighborSearch(receptor_atoms)
              selected_residues = set()
              for p_atom in pocket_atoms:
-                 nearby = ns.search(p_atom.get_coord(), 4.0, level='R')
+                 nearby = ns.search(p_atom.get_coord(), 10.0, level='R')
                  for res in nearby:
                      selected_residues.add((res.parent.id, res.id))
             
@@ -398,7 +398,7 @@ def create_control_group(label, initial_val, step, color_hex):
             
     minus_button.on_click(on_minus)
     plus_button.on_click(on_plus)
-    val_widget.observe(lambda c: update_visual(None, reset_view=False) if c['type'] == 'change' and c['name'] == 'value' else None)
+    val_widget.observe(lambda c: update_visual(None) if c['type'] == 'change' and c['name'] == 'value' else None)
 
     # Label styling
     # We use HTML to color the label text
@@ -485,10 +485,10 @@ def initialize_ui(b):
         display(ui_container)
     
     first_render = True
-    update_visual(None, reset_view=True)
+    update_visual(None)
 
 
-def update_visual(b, reset_view=False):
+def update_visual(b):
     viz_output.clear_output(wait=True)
     with viz_output:
         if 'cx' not in controls: return
@@ -504,17 +504,25 @@ def update_visual(b, reset_view=False):
         # 1. ADD POCKET ONLY
         # We need the path. Using the one we calculated/detected
         selected_pocket = pocket_dropdown.value
-        # If 'Auto', we might be using the raw one. If 'Manual', same.
-        # But wait, we want to see the pocket relative to the box.
+        src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
+        
         # Ideally we use the 'temp_calc.pdb' if it was valid, or the source.
         # Let's use source for visualization to avoid confusion
-        src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
+        temp_pocket_path = os.path.join(pockets_dir, "temp_calc.pdb")
+        
+        if os.path.exists(temp_pocket_path):
+             with open(temp_pocket_path, 'r') as f:
+                view.addModel(f.read(), "pdb")
+             # Buffer (10A) Context: White Surface + Sticks
+             view.setStyle({'model': -1}, {'stick':{'colorscheme':'greenCarbon'}})
+            #  view.addSurface(py3Dmol.SES, {'opacity': 0.5, 'color': 'white'}, {'model': -1})
+
         if os.path.exists(src_pocket_path):
              with open(src_pocket_path, 'r') as f:
                 view.addModel(f.read(), "pdb")
-             # Visual improvements: Volume as Red Spheres, Surface as White (0.9)
-             view.setStyle({'model': -1}, {'sphere': {'color': 'red', 'opacity': 1.0}})
-             view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'white'}, {'model': -1})
+             # Original Selected Fpocket: Orange Surface
+             view.setStyle({'model': -1}, {})
+             view.addSurface(py3Dmol.SES, {'opacity': 0.9, 'color': 'orange'}, {'model': -1})
         
         # 2. ADD GRIDBOX (RGB Wireframe - Thick Cylinders)
         # Red = X axis, Green = Y axis, Blue = Z axis
@@ -538,9 +546,7 @@ def update_visual(b, reset_view=False):
             for y in [y1, y2]:
                 view.addCylinder({'start':{'x':x,'y':y,'z':z1}, 'end':{'x':x,'y':y,'z':z2}, 'radius':r, 'color':'blue'})
 
-        if reset_view:
-             view.zoomTo()
-             
+        view.zoomTo()
         view.show()
 
 def finalize_process(b):
