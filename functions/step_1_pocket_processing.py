@@ -499,53 +499,70 @@ def update_visual(b, create_new=False):
         view = py3Dmol.view(width=800, height=600)
         
         # 0. Receptor Surface (Background)
-        # It's helpful to see the receptor too
         if os.path.exists(receptor_filename):
             with open(receptor_filename, 'r') as f:
                 view.addModel(f.read(), "pdb")
             view.setStyle({'model': -1}, {}) # Hide atoms
             view.addSurface(py3Dmol.SES, {'opacity': 0.3, 'color': 'gray'}, {'model': -1})
 
-        # 1. Expanded Pocket (Cartoon) - The one with 3A buffer
+        # Determine Mode
+        is_auto = (mode_selector.value == 'Auto Detect')
         temp_pocket_path = os.path.join(pockets_dir, "temp_calc.pdb")
-        if os.path.exists(temp_pocket_path):
-            with open(temp_pocket_path, 'r') as f:
-                view.addModel(f.read(), "pdb")
-            # Cartoon Representation
-            view.setStyle({'model': -1}, {'cartoon': {'color': 'cyan', 'opacity': 0.8}})
-        
-        # 2. Original Fpocket (White Surface)
-        selected_pocket = pocket_dropdown.value
-        src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
-        if os.path.exists(src_pocket_path):
-             with open(src_pocket_path, 'r') as f:
-                view.addModel(f.read(), "pdb")
-             # White Surface
-             view.addSurface(py3Dmol.SES, {'opacity': 0.5, 'color': 'white'}, {'model': -1})
-             # Hide atoms of this one, just surface
-             view.setStyle({'model': -1}, {}) 
-             
-             # Calculate Volume
-             vol = get_pocket_volume_hull(src_pocket_path)
-             print(f"Original Pocket Volume (Convex Hull): {vol:.2f} A^3")
-             
-             # 3. Volume Representation (Red Surface)
-             view.addSurface(py3Dmol.SAS, {'opacity': 0.3, 'color': 'red'}, {'model': -1})
 
-        # 4. Gridbox
-        view.addBox({
-            'center': {'x': cx, 'y': cy, 'z': cz},
-            'dimensions': {'w': sx, 'h': sy, 'd': sz},
-            'color': 'cyan',
-            'opacity': 0.2,
-            'wireframe': False
-        })
-        view.addBox({
-            'center': {'x': cx, 'y': cy, 'z': cz},
-            'dimensions': {'w': sx, 'h': sy, 'd': sz},
-            'color': 'black',
-            'wireframe': True
-        })
+        if is_auto:
+            # Auto Mode: 
+            # 1. Expanded Pocket (Buffer 3A) -> White Cartoon
+            if os.path.exists(temp_pocket_path):
+                with open(temp_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+                view.setStyle({'model': -1}, {'cartoon': {'color': 'white', 'opacity': 0.8}})
+            
+            # 2. Original Fpocket -> White Surface + Red Volume
+            selected_pocket = pocket_dropdown.value
+            src_pocket_path = os.path.join(fpocket_storage_dir, selected_pocket)
+            if os.path.exists(src_pocket_path):
+                 with open(src_pocket_path, 'r') as f: view.addModel(f.read(), "pdb")
+                 view.setStyle({'model': -1}, {}) 
+                 view.addSurface(py3Dmol.SES, {'opacity': 0.5, 'color': 'white'}, {'model': -1})
+                 view.addSurface(py3Dmol.SAS, {'opacity': 0.3, 'color': 'red'}, {'model': -1}) # Volume
+                 
+                 vol = get_pocket_volume_hull(src_pocket_path)
+                 print(f"Original Pocket Volume (Convex Hull): {vol:.2f} A^3")
+        else:
+            # Manual Mode:
+            # Pocket PDB -> White Surface + Red Volume (No cartoon)
+            # Use temp path as it represents the processing result
+            target_path = temp_pocket_path if os.path.exists(temp_pocket_path) else None
+            if target_path:
+                 with open(target_path, 'r') as f: view.addModel(f.read(), "pdb")
+                 view.setStyle({'model': -1}, {})
+                 view.addSurface(py3Dmol.SES, {'opacity': 0.5, 'color': 'white'}, {'model': -1})
+                 view.addSurface(py3Dmol.SAS, {'opacity': 0.3, 'color': 'red'}, {'model': -1}) # Volume
+
+        # 4. Gridbox - Thick RGB Edges (No faces)
+        # X=Red, Y=Green, Z=Blue
+        x1, x2 = cx - sx/2, cx + sx/2
+        y1, y2 = cy - sy/2, cy + sy/2
+        z1, z2 = cz - sz/2, cz + sz/2
+        
+        radius = 0.15
+        
+        # X-Edges (Red)
+        view.addCylinder({'start': {'x':x1,'y':y1,'z':z1}, 'end': {'x':x2,'y':y1,'z':z1}, 'radius': radius, 'color': 'red'})
+        view.addCylinder({'start': {'x':x1,'y':y2,'z':z1}, 'end': {'x':x2,'y':y2,'z':z1}, 'radius': radius, 'color': 'red'})
+        view.addCylinder({'start': {'x':x1,'y':y1,'z':z2}, 'end': {'x':x2,'y':y1,'z':z2}, 'radius': radius, 'color': 'red'})
+        view.addCylinder({'start': {'x':x1,'y':y2,'z':z2}, 'end': {'x':x2,'y':y2,'z':z2}, 'radius': radius, 'color': 'red'})
+
+        # Y-Edges (Green)
+        view.addCylinder({'start': {'x':x1,'y':y1,'z':z1}, 'end': {'x':x1,'y':y2,'z':z1}, 'radius': radius, 'color': 'green'})
+        view.addCylinder({'start': {'x':x2,'y':y1,'z':z1}, 'end': {'x':x2,'y':y2,'z':z1}, 'radius': radius, 'color': 'green'})
+        view.addCylinder({'start': {'x':x1,'y':y1,'z':z2}, 'end': {'x':x1,'y':y2,'z':z2}, 'radius': radius, 'color': 'green'})
+        view.addCylinder({'start': {'x':x2,'y':y1,'z':z2}, 'end': {'x':x2,'y':y2,'z':z2}, 'radius': radius, 'color': 'green'})
+        
+        # Z-Edges (Blue)
+        view.addCylinder({'start': {'x':x1,'y':y1,'z':z1}, 'end': {'x':x1,'y':y1,'z':z2}, 'radius': radius, 'color': 'blue'})
+        view.addCylinder({'start': {'x':x2,'y':y1,'z':z1}, 'end': {'x':x2,'y':y1,'z':z2}, 'radius': radius, 'color': 'blue'})
+        view.addCylinder({'start': {'x':x1,'y':y2,'z':z1}, 'end': {'x':x1,'y':y2,'z':z2}, 'radius': radius, 'color': 'blue'})
+        view.addCylinder({'start': {'x':x2,'y':y2,'z':z1}, 'end': {'x':x2,'y':y2,'z':z2}, 'radius': radius, 'color': 'blue'})
 
         if create_new:
             view.zoomTo()
