@@ -41,7 +41,33 @@ def save_pipeline_state(data):
     current.update(data)
     with open(pipeline_state_file, 'w') as f: json.dump(current, f)
 
-# --- Part 1: Detection & Upload Logic ---
+# --- Part 1: Receptor Input ---
+receptor_upload_widget = widgets.FileUpload(description="Upload Receptor (pdb)", accept=".pdb", multiple=False, layout=widgets.Layout(width='300px'))
+receptor_status = widgets.Output()
+
+def handle_receptor_upload(change):
+    receptor_status.clear_output()
+    with receptor_status:
+        if not receptor_upload_widget.value: return
+        # ipywidgets 7/8 compat
+        upl_file = list(receptor_upload_widget.value.values())[0] if isinstance(receptor_upload_widget.value, dict) else receptor_upload_widget.value[0]
+        content = upl_file['content']
+        with open(receptor_filename, "wb") as f:
+            f.write(content)
+        print("✅ Receptor uploaded successfully.")
+
+receptor_upload_widget.observe(handle_receptor_upload, names='value')
+
+print("Step 1.1: Load Receptor")
+display(widgets.VBox([receptor_upload_widget, receptor_status]))
+
+with receptor_status:
+    if os.path.exists(receptor_filename):
+        print(f"✅ Receptor file present: {receptor_filename}")
+    else:
+        print("Waiting for receptor upload...")
+
+# --- Part 2: Detection & Upload Logic ---
 
 mode_selector = widgets.ToggleButtons(
     options=['Auto Detect', 'Manual Upload'],
