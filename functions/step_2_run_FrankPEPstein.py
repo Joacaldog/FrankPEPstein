@@ -264,6 +264,20 @@ def run_step_2():
         with log_output:
             print("❌ Error: Pocket Gridbox not defined. Please run Step 1 successfully.")
         return
+
+    # [ADDED] Ensure receptor is named receptor.pdb
+    standard_receptor = os.path.join(initial_path, "receptor.pdb")
+    if receptor_path and os.path.exists(receptor_path):
+        if os.path.abspath(receptor_path) != os.path.abspath(standard_receptor):
+            try:
+                # Copy to receptor.pdb so pipeline finds it
+                import shutil
+                shutil.copy(receptor_path, standard_receptor)
+                with log_output:
+                    print(f"ℹ️  Copied {os.path.basename(receptor_path)} to receptor.pdb")
+            except Exception as e:
+                with log_output:
+                   print(f"⚠️ Warning: Failed to copy receptor file: {e}")
     
     with log_output:
         print(f"--- Starting FrankPEPstein Generation ---")
