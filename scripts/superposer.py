@@ -15,8 +15,6 @@ import warnings
 from joblib import Parallel, delayed
 import numpy as np
 import argparse
-import numpy as np
-import argparse
 
 program_description = "Select and generate fragment of peptides that could eventually bind to target receptor based on minipocket alignments"
 parser = argparse.ArgumentParser(description=program_description)

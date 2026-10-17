@@ -256,6 +256,11 @@ def run_processing_isolated(receptor_path, pocket_path, output_pocket_path, mode
     """
     Runs extraction/processing and box calculation in isolated environment.
     """
+    # The f prefix is load-bearing even though nothing is interpolated: it is what turns the
+    # doubled braces below into single braces in the generated file. Linters flag this as an
+    # f-string without placeholders - do not remove it, the child script's own f-strings
+    # (print(f"CENTER:{{...}}")) would then emit literal braces and the parent could not parse
+    # the coordinates back.
     script_content = f"""
 import sys
 import os
