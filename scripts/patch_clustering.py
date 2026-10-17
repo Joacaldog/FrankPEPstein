@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from tqdm import tqdm
 import fnmatch
@@ -23,7 +24,6 @@ from collections import Counter, OrderedDict
 import statistics
 import math
 from operator import itemgetter
-from sklearn.linear_model import LinearRegression
 import random
 
 # Configuration Variables
@@ -50,7 +50,34 @@ random.seed(args.seed)
 
 d3to1 = {'CYS': 'C', 'ASP': 'D', 'SER': 'S', 'GLN': 'Q', 'LYS': 'K', 'ILE': 'I', 'PRO': 'P', 'THR': 'T', 'PHE': 'F', 'ASN': 'N',
          'GLY': 'G', 'HIS': 'H', 'LEU': 'L', 'ARG': 'R', 'TRP': 'W', 'ALA': 'A', 'VAL': 'V', 'GLU': 'E', 'TYR': 'Y', 'MET': 'M'}
-    
+
+_warned_resnames = set()
+
+
+def usable_residue(res):
+    """A residue this pipeline can name with one letter and place by its backbone.
+
+    Anything else (modified residues, ligands, waters, caps) is filtered out at ingest rather
+    than defaulted to 'X'. An 'X' would flow into the peptide name, and step 3 recovers the
+    final sequence from the filename with a regex over the 20 standard letters, so a single X
+    silently truncates the reported sequence instead of failing.
+    """
+    return res.get_resname() in d3to1 and all(atom in res for atom in ("N", "CA", "C"))
+
+
+def warn_unusable(res):
+    name = res.get_resname()
+    if name not in _warned_resnames:
+        _warned_resnames.add(name)
+        print(f"Warning: skipping residue type {name!r} (not a standard residue, or missing N/CA/C).")
+
+
+def sequence_of(residues):
+    """One-letter sequence, or None if any residue is not representable."""
+    letters = [d3to1.get(res.get_resname()) for res in residues]
+    return None if any(letter is None for letter in letters) else "".join(letters)
+
+
 initial_path = os.getcwd()
 folder_output = (f"frankPEPstein_{winsize}")
 if not os.path.exists(folder_output):
@@ -75,9 +102,10 @@ def save_pdb(peptide_ordered):
     structure2 = builder.get_structure()
     io = PDBIO()
     io.set_structure(structure2)
-    peptide_name = "pep_" + \
-        "".join([d3to1.get(res.get_resname())
-                 for res in final_peptide2])
+    sequence = sequence_of(final_peptide2)
+    if sequence is None:
+        return None
+    peptide_name = "pep_" + sequence
     peptide_file = folder_output + "/" + peptide_name + ".pdb"
     io.save(peptide_file, preserve_atom_numbering=False)
     # time.sleep(0.5)
@@ -173,8 +201,8 @@ def kmerizator(pdb_file_no_extension, k_mers_list):
                             for residx2, residue in enumerate(residues[residx:residx + winsize]):
                                 fragment.append(residue)  # Add residue to protein fragment
                             # Write protein fragment to disk (in PDB format)
-                            kmer_name = "".join([d3to1.get(res.get_resname()) for res in fragment])
-                            if kmer_name not in k_mers_list:
+                            kmer_name = sequence_of(fragment)
+                            if kmer_name is not None and kmer_name not in k_mers_list:
                                 k_mers_list.append(kmer_name)
                                 io.save(f'{folder_output}/frag_{kmer_name}.pdb', select=SelectFragOnly())
                                 pdb_parser(f'{folder_output}/frag_{kmer_name}.pdb')
@@ -183,7 +211,9 @@ def kmerizator(pdb_file_no_extension, k_mers_list):
 
                     if len(residues) < winsize:
                         fragment = residues
-                        kmer_name = "".join([d3to1.get(res.get_resname()) for res in fragment])
+                        kmer_name = sequence_of(fragment)
+                        if kmer_name is None:
+                            continue
                         io.save(f'{folder_output}/frag_{kmer_name}.pdb', select=SelectFragOnly())
                         pdb_parser(f'{folder_output}/frag_{kmer_name}.pdb')
                         # os.system(f'rm sequence_analysis_{kmer_name}.txt 2> /dev/null')
@@ -194,44 +224,22 @@ def kmerizator(pdb_file_no_extension, k_mers_list):
   
 
 def find_outliers_linear_trend(coordinates_list, threshold_multiplier=OUTLIER_THRESHOLD):
-    # Separar las coordenadas en X, Y, y Z
-    x_coordinates = np.array([coord[0][0] for coord in coordinates_list])
-    y_coordinates = np.array([coord[0][1] for coord in coordinates_list])
-    z_coordinates = np.array([coord[0][2] for coord in coordinates_list])
+    """Flag patch centroids that sit far from the bulk of the patch cloud.
 
-    # Ajustar una regresión lineal a las coordenadas
-    def fit_linear_model(x, y):
-        model = LinearRegression()
-        model.fit(x.reshape(-1, 1), y)
-        return model
-
-    x_model = fit_linear_model(np.arange(len(x_coordinates)), x_coordinates)
-    y_model = fit_linear_model(np.arange(len(y_coordinates)), y_coordinates)
-    z_model = fit_linear_model(np.arange(len(z_coordinates)), z_coordinates)
-
-    # Calcular los residuos de cada coordenada con respecto a su modelo lineal
-    x_residuals = x_coordinates - x_model.predict(np.arange(len(x_coordinates)).reshape(-1, 1))
-    y_residuals = y_coordinates - y_model.predict(np.arange(len(y_coordinates)).reshape(-1, 1))
-    z_residuals = z_coordinates - z_model.predict(np.arange(len(z_coordinates)).reshape(-1, 1))
-
-    # Calcular la mediana de los residuos para cada dimensión
-    x_median_residual = np.median(x_residuals)
-    y_median_residual = np.median(y_residuals)
-    z_median_residual = np.median(z_residuals)
-
-    # Identificar los outliers basados en los residuos
-    outliers = []
-    for i in range(len(coordinates_list)):
-        coord, name = coordinates_list[i]
-        is_outlier = (
-            abs(x_residuals[i] - x_median_residual) > threshold_multiplier * np.std(x_residuals) or
-            abs(y_residuals[i] - y_median_residual) > threshold_multiplier * np.std(y_residuals) or
-            abs(z_residuals[i] - z_median_residual) > threshold_multiplier * np.std(z_residuals)
-        )
-        if is_outlier:
-            outliers.append((coord, name))
-
-    return outliers
+    This used to fit a linear regression of each coordinate against the patch's *index* in the
+    list, i.e. against os.listdir order. There is no independent variable here, so the "trend"
+    was an artefact of filesystem ordering, and sorting the listing would not help: patch
+    filenames encode residue numbers, so alphabetical order correlates with position along the
+    donor chain and therefore with position in space. The statistic is now computed from the
+    point cloud itself, using a median-absolute-deviation scale with a 1 A floor so it cannot
+    fire on a near-degenerate set of almost-identical patches.
+    """
+    centroids = np.array([coord for coord, _ in coordinates_list])
+    distances = np.linalg.norm(centroids - np.median(centroids, axis=0), axis=1)
+    median_distance = np.median(distances)
+    scale = max(1.4826 * np.median(np.abs(distances - median_distance)), 1.0)
+    cut = median_distance + threshold_multiplier * scale
+    return [coordinates_list[i] for i in range(len(distances)) if distances[i] > cut]
 
 
 def delete_outsider_frag():
@@ -246,8 +254,12 @@ def delete_outsider_frag():
                 for chain in model:
                     ca_list = []
                     for residue in chain:
-                        ca_coord = residue["CA"].coord
-                        ca_list.append(ca_coord)
+                        if not usable_residue(residue):
+                            continue
+                        ca_list.append(residue["CA"].coord)
+                    if not ca_list:
+                        # A patch of only caps/waters would otherwise give a NaN centroid.
+                        continue
                     array = list(np.average(np.array(ca_list), axis=0))
                     coords_array_name = (array, file)
                     coordinates_3d.append(coords_array_name)
@@ -284,6 +296,12 @@ def combinator():
                     for model in structure:
                         for chain in model:
                             for residue in chain:
+                                # Load-bearing filter: nothing unusable enters res_dict, so it can
+                                # never reach reformed_residues, peptide_ordered, the peptide name,
+                                # or a frag_*.pdb that frankVINA_2 would have to minimise.
+                                if not usable_residue(residue):
+                                    warn_unusable(residue)
+                                    continue
                                 resnameid_coord = residue.get_resname(
                                 ) + str(residue.get_id()[1]) + "_" + "_".join([str(tuple(residue["N"].coord)), str(tuple(residue["CA"].coord)), str(tuple(residue["C"].coord))])
                                 if res_dict.get(resnameid_coord) is None:
@@ -367,13 +385,34 @@ def combinator():
                 combination = list(set(combination))
                 dup_comb_list.append(combination)
         else:
-            # Too many, use random sampling
+            # Too many: draw MAX_COMBINATIONS DISTINCT combinations. Independent per-group draws
+            # sample with replacement, so asking for N combinations silently returned noticeably
+            # fewer unique ones. Index into the cartesian product instead.
             print(f"Total combinations ({total_stats}) exceeds limit ({MAX_COMBINATIONS}). Random sampling...")
-            for _ in range(MAX_COMBINATIONS):
-                 # Pick random one from each group
-                 combination = [random.choice(group) for group in equivalentRes_dup]
-                 combination = list(set(combination))
-                 dup_comb_list.append(combination)
+            group_sizes = [len(group) for group in equivalentRes_dup]
+
+            def decode_combination(index):
+                combo = []
+                for group, size in zip(equivalentRes_dup, group_sizes):
+                    combo.append(group[index % size])
+                    index //= size
+                return combo
+
+            if total_stats <= sys.maxsize:
+                for index in random.sample(range(total_stats), MAX_COMBINATIONS):
+                    dup_comb_list.append(list(set(decode_combination(index))))
+            else:
+                # Astronomically many combinations: collisions are negligible, reject the few.
+                seen_indices = set()
+                attempts = 0
+                while len(dup_comb_list) < MAX_COMBINATIONS and attempts < 20 * MAX_COMBINATIONS:
+                    attempts += 1
+                    index = tuple(random.randrange(size) for size in group_sizes)
+                    if index in seen_indices:
+                        continue
+                    seen_indices.add(index)
+                    dup_comb_list.append(list(set(
+                        group[i] for group, i in zip(equivalentRes_dup, index))))
 
         # Skip the original product line as we built dup_comb_list manually
         combination_res_list = list(product([single_res], dup_comb_list))
@@ -384,6 +423,7 @@ def combinator():
         # but logic dictates we might have up to MAX_COMBINATIONS now.
         if len_comb >= MAX_COMBINATIONS:
             combination_res_list = random.sample(combination_res_list, MAX_COMBINATIONS)
+        short_combinations = 0
         for final_comb in tqdm(combination_res_list, total=len(combination_res_list), desc="Working on each combination...", position=0, leave=True):
             res_dist_dict = {}
             res_dist_list = []
@@ -417,6 +457,12 @@ def combinator():
                 res_dist_list.append(tuple_res)
 
             sorted_list = sorted(res_dist_list,key=itemgetter(1))
+            if len(sorted_list) < 3:
+                # The 3 A clustering collapsed this combination to fewer than three distinct
+                # positions, so there is no start/mid/end split to make. Indexing [-2] here used
+                # to raise IndexError and destroy every peptide assembled so far.
+                short_combinations += 1
+                continue
             start_res = [sorted_list[-1][0]]
             end_res = sorted_list[-2][0]
             mid_residues = [x[0] for x in sorted_list[:-2]]
@@ -462,17 +508,17 @@ def combinator():
             peptide_ordered.append(end_res)
 
             # if len(peptide_ordered) >= 5:
-            if dist_bond_pass == 1:
-                peptide_name = "".join([d3to1.get(res.get_resname()) for res in peptide_ordered])
-                if peptide_name not in final_names_list:
-                    final_names_list.append(peptide_name)
-                    final_peptides_list.append(peptide_ordered)
             if dist_bond_pass == 0:
                 peptide_ordered = peptide_ordered[::-1]
-                peptide_name = "".join([d3to1.get(res.get_resname()) for res in peptide_ordered])
-                if peptide_name not in final_names_list:
-                    final_names_list.append(peptide_name)
-                    final_peptides_list.append(peptide_ordered)
+            peptide_name = sequence_of(peptide_ordered)
+            if peptide_name is not None and peptide_name not in final_names_list:
+                final_names_list.append(peptide_name)
+                final_peptides_list.append(peptide_ordered)
+
+        if short_combinations:
+            print(f"Warning: skipped {short_combinations} combination(s) with fewer than 3 distinct "
+                  f"residue positions - the 3 A clustering collapsed them. Patches may be too few "
+                  f"or too similar.")
 
     return final_peptides_list
     
@@ -481,6 +527,8 @@ def main():
     if len(final_peptides_list) > 0:
         def frag_min(peptide_ordered, k_mers_list):
             peptide_file = save_pdb(peptide_ordered)
+            if peptide_file is None:
+                return
             kmerizator(peptide_file, k_mers_list)
             os.system(f"rm -f {peptide_file} 2> /dev/null")
 

@@ -2,6 +2,8 @@
 
 import os
 import sys
+import shutil
+import subprocess
 from tqdm import tqdm
 import fnmatch
 from Bio.PDB import *
@@ -61,6 +63,16 @@ PARAMETERS_INP_PATH = os.path.join(CLICK_DIR, "Parameters.inp")
 
 print(f"DEBUG: Using CLICK_PATH={CLICK_PATH}")
 print(f"DEBUG: Using PARAMETERS_INP_PATH={PARAMETERS_INP_PATH}")
+
+# Fail loudly here rather than silently producing zero patches. Every CLICK invocation below
+# sends stdout and stderr to /dev/null inside a worker with a bare except, so a missing or
+# non-executable binary is otherwise indistinguishable from "the database had no good hits".
+# Note the fallback above can leave CLICK_PATH pointing at the *directory*, which is executable.
+if not (os.path.isfile(CLICK_PATH) and os.access(CLICK_PATH, os.X_OK)):
+    sys.exit(f"ERROR: CLICK binary not found or not executable at {CLICK_PATH}. "
+             f"Re-run the setup step so utilities/click/click exists.")
+if not os.path.isfile(PARAMETERS_INP_PATH):
+    sys.exit(f"ERROR: CLICK Parameters.inp not found at {PARAMETERS_INP_PATH}.")
 # ----------------------------------
 
 fau_file = args.target_receptor
@@ -77,8 +89,12 @@ y_size = args.y_size
 z_size = args.z_size
 
 folder_temp = (f"temp_folder_residuesAligned{cutoff}_RMSD{RMSD_allowed}")
-if not os.path.exists(folder_temp):
-    os.makedirs(folder_temp)
+# Wipe rather than reuse: this is scratch, and leftovers from an aborted run get appended to
+# (see the super_file merge below) and silently corrupt the current run's superpositions.
+# Must happen before the two copies into the temp dir below.
+if os.path.exists(folder_temp):
+    shutil.rmtree(folder_temp, ignore_errors=True)
+os.makedirs(folder_temp, exist_ok=True)
 
 folder_output = (f"superpockets_residuesAligned{cutoff}_RMSD{RMSD_allowed}")
 if not os.path.exists(folder_output):
@@ -86,10 +102,16 @@ if not os.path.exists(folder_output):
 
 working_directory = os.getcwd()
 
-# Copy Target to Temp
-os.system(f'cp {fau_file} {folder_temp}')
+# Copy Target to Temp (shutil, not a shell: these paths are user-supplied and may contain spaces)
+shutil.copy(fau_file, folder_temp)
 # Copy Parameters (using configured path)
-os.system(f"cp {PARAMETERS_INP_PATH} {folder_temp}")
+shutil.copy(PARAMETERS_INP_PATH, folder_temp)
+
+
+def run_click_binary(*click_args):
+    """Invoke CLICK without a shell, so paths containing spaces still work."""
+    subprocess.run([CLICK_PATH, *click_args],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 def run_click(file):
     try:
@@ -131,12 +153,10 @@ def run_click(file):
                 out_file1 = (f"{file_noExtension}-{Faufile_noExtension}.1.pdb")
                 sup_needed1 = (f"{Faufile_noExtension}-{file_noExtension}.1.pdb")
                 # print("-------", folder, peptide_chain, patch, patch_length, "-------")
-                os.system(f"cp {folder_file} .")
-                
-                # [MODIFIED] Use explicit CLICK_PATH
-                cmd = (f"{CLICK_PATH} {file} {Faufile_noExtension}.pdb 1> /dev/null 2> /dev/null")
-                os.system(cmd)
-                
+                shutil.copy(folder_file, ".")
+
+                run_click_binary(file, f"{Faufile_noExtension}.pdb")
+
                 pass_criteria = 0
                 if os.path.exists(log_file1):
                     with open(log_file1) as f:
@@ -174,15 +194,28 @@ def run_click(file):
                     os.system(f"sed -i '/END/d' {out_file1}")
                     os.system(f'cat {out_file1} {sup_needed1} > {name_outfile1_supneeded1}.pdb')
                     
-                    # [MODIFIED] Use explicit CLICK_PATH
-                    cmd = (f"{CLICK_PATH} {name_outfile1_supneeded1}.pdb {file} 1> /dev/null 2> /dev/null")
-                    os.system(cmd)
-                    
+                    run_click_binary(f"{name_outfile1_supneeded1}.pdb", file)
+
                     log_file_tmp = (f"{name_outfile1_supneeded1}-{file_noExtension}.pdb.1.clique")
                     out_file1_tmp = (f"{file_noExtension}-{name_outfile1_supneeded1}.1.pdb")
                     sup_needed1_tmp = (f"{name_outfile1_supneeded1}-{file_noExtension}.1.pdb")
-                    os.system(f"cat {sup_needed1_tmp} | grep ' p' > {sup_needed1}")
-                    os.system(f'rm {log_file1} {out_file1_tmp} {log_file_tmp} {out_file1} {sup_needed1_tmp} {name_outfile1_supneeded1}.pdb 2> /dev/null')
+                    leftovers = (f"{log_file1} {out_file1_tmp} {log_file_tmp} {out_file1} "
+                                 f"{sup_needed1_tmp} {name_outfile1_supneeded1}.pdb")
+                    # Write to a temporary and only then replace sup_needed1. The old
+                    # `grep ... > sup_needed1` truncated the file before grep ran, so a failed
+                    # CLICK merge left a 0-byte pocket behind and out_file1 (the only other copy)
+                    # was deleted on the next line. Falling back to the stale sup_needed1 is not an
+                    # option either: it is in the target frame, while what follows needs the
+                    # donor-complex frame. Skip the minipocket instead.
+                    if not os.path.exists(sup_needed1_tmp) or os.path.getsize(sup_needed1_tmp) == 0:
+                        os.system(f'rm -f {leftovers} {sup_needed1} {file} 2> /dev/null')
+                        return
+                    os.system(f"grep ' p' {sup_needed1_tmp} > {sup_needed1}.new")
+                    if os.path.getsize(f"{sup_needed1}.new") == 0:
+                        os.system(f'rm -f {leftovers} {sup_needed1}.new {sup_needed1} {file} 2> /dev/null')
+                        return
+                    os.replace(f"{sup_needed1}.new", sup_needed1)
+                    os.system(f'rm -f {leftovers} 2> /dev/null')
                 except:
                     pass
 
@@ -219,27 +252,33 @@ def run_click(file):
                         print(f"DEBUG: Error parsing complex file {complex_file}: {e}")
                 
                 if len(fragment) == patch_length:
+                    sup_needed2 = None
                     try:
                         patch_file = (f'patch_file_{folder}_{"-".join(patch)}.pdb')
                         io.save(patch_file, select=SelectFragOnly())
                         minipocket_file_noExtension = file_noExtension
                         os.system(f"sed -i '/END/d' {sup_needed1}")
                         super_file = (f"super_{minipocket_file_noExtension}.pdb")
-                        cmd_merge_peptide_pocket = f"cat {sup_needed1} {patch_file} >> {super_file}"
+                        # Truncate, do not append: `>>` reused a stale super_file left behind by an
+                        # aborted run, silently merging two different superpositions.
+                        cmd_merge_peptide_pocket = f"cat {sup_needed1} {patch_file} > {super_file}"
                         os.system(cmd_merge_peptide_pocket)
                         
-                        # [MODIFIED] Use explicit CLICK_PATH
-                        cmd_super = (f'{CLICK_PATH} {super_file} {Faufile_noExtension}.pdb 1> /dev/null')
-                        os.system(cmd_super)
-                        
+                        run_click_binary(super_file, f"{Faufile_noExtension}.pdb")
+
                         out_file2 = (f'{Faufile_noExtension}-{super_file.replace(".pdb", "")}.1.pdb')
                         sup_needed2 = (f'{super_file.replace(".pdb", "")}-{Faufile_noExtension}.1.pdb')
                         log_file2 = (f'{super_file.replace(".pdb", "")}-{Faufile_noExtension}.pdb.1.clique')
                         os.system(f"sed -i '/END/d' {sup_needed2}")
                         os.system(f"rm {out_file2} {log_file2} {sup_needed1} {super_file} {patch_file} {file}")
-                    except:
-                        pass
-                    
+                    except Exception as e:
+                        print(f"DEBUG: superposition step failed for {file}: {e}")
+
+                    if sup_needed2 is None:
+                        # The try above aborted before naming the superposed file. Reading it below
+                        # would raise NameError, and so would the handler that reports it.
+                        return
+
                     fragment = []
                     pocket = []
                     fragment_output_lumen = []
@@ -312,9 +351,13 @@ def run_click(file):
                     if error_lumen <= 0 and len(new_peptide) > 0:
                         patch = [res.get_resname() + str(res.get_id()[1])
                                 for res in new_peptide]
-                        patch_file2 = ("../{out_folder}/patch_file_{patch}.pdb").format(
-                            out_folder=folder_output, patch="-".join(patch))
-                        
+                        # Include the source DB entry in the name. Without it, every database hit
+                        # whose surviving residues share names and numbers wrote to the same path
+                        # and the last writer won, silently discarding distinct superpositions.
+                        # The patch_file_ prefix is load-bearing: four downstream globs match on it.
+                        patch_file2 = ("../{out_folder}/patch_file_{folder}_{patch}.pdb").format(
+                            out_folder=folder_output, folder=folder, patch="-".join(patch))
+
                         io.save(patch_file2, select=SelectFragOnly2())
 
     except:
