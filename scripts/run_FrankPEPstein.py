@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import glob
 import subprocess
 import shutil
 
@@ -109,22 +110,42 @@ def main():
             print(f"Running patch_clustering with kmer: {pep_size} ")
             cmd_clustering = [sys.executable, f'{repo_folder}/scripts/patch_clustering.py', '-w', str(pep_size), '-t', str(threads), '-c', str(args.sampling), '-seed', str(args.seed)]
             print(f"CMD: {' '.join(cmd_clustering)}")
-            os.system(f"{' '.join(cmd_clustering)}")
-            
+            # patch_clustering creates its output directory at import time, so os.path.exists()
+            # below cannot tell success from failure. Check the exit status instead.
+            clustering_rc = subprocess.run(cmd_clustering, check=False).returncode
+
             cluster_dir = f"frankPEPstein_{pep_size}"
-            if os.path.exists(cluster_dir):
+            if clustering_rc != 0:
+                print(f"Error: patch_clustering exited with code {clustering_rc}; skipping FrankVINA 2.")
+            elif os.path.exists(cluster_dir):
                 os.chdir(cluster_dir)
                 shutil.copy(pocket_pdb, ".") # Modified: Copy pocket instead of receptor for VINA 2 speedup
-                
+
                 print(f"--- Running FrankVINA 2 ---")
-                cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} {threads} {candidates_number} {args.sampling} {args.seed}'
-                print(f"CMD: {cmd_vina2}")
-                os.system(cmd_vina2)
-                
-                os.system("rm * 2> /dev/null")
+                # List form, not a shell string: initial_path is an arbitrary filesystem path.
+                cmd_vina2 = [sys.executable, f'{repo_folder}/scripts/frankVINA_2.py',
+                             initial_path, str(threads), str(candidates_number),
+                             str(args.sampling), str(args.seed)]
+                print(f"CMD: {' '.join(cmd_vina2)}")
+                vina2_rc = subprocess.run(cmd_vina2, check=False).returncode
+
+                if vina2_rc != 0:
+                    # Do NOT clean up after a failure: the fragments are the only record of what
+                    # stage 4 was given, and a bare `rm *` here used to erase them while the run
+                    # still reported success.
+                    print(f"Error: FrankVINA 2 exited with code {vina2_rc}; leaving {cluster_dir} intact for inspection.")
+                else:
+                    # Narrow cleanup of the staged inputs only, never a bare glob.
+                    for leftover in glob.glob("frag_*.pdb"):
+                        os.remove(leftover)
+                    if os.path.exists("pocket.pdb"):
+                        os.remove("pocket.pdb")
+
+                # Return to the superposer output dir: the patch-file move below assumes it.
+                os.chdir(output_superposer_path)
             else:
                  print(f"Error: {cluster_dir} not created.")
-                 
+
         elif len(patch_files) == 1:
              print("Only one patch file in folder")
              pass
