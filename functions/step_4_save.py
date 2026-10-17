@@ -16,23 +16,34 @@ from datetime import datetime
 # Logic to find the target folder (same as Step 3)
 initial_path = os.getcwd()
 run_base = os.path.join(initial_path, "FrankPEPstein_run")
-# Recursive glob to match: FrankPEPstein_run/**/top_*_peps
-candidate_folders = glob.glob(os.path.join(run_base, "**", "top_*_peps"), recursive=True)
 
-target_folder = None
-if candidate_folders:
-    target_folder = sorted(candidate_folders, key=os.path.getmtime, reverse=True)[0]
+
+def find_target_folder():
+    """Resolve the results folder at click time, not at cell-execution time.
+
+    Binding this once when the cell runs meant the button kept pointing at whatever existed
+    then: it zipped a previous run's results, or refused to do anything, after a later run had
+    already produced new ones.
+    """
+    # Recursive glob to match: FrankPEPstein_run/**/top_*_peps
+    candidate_folders = glob.glob(os.path.join(run_base, "**", "top_*_peps"), recursive=True)
+    if not candidate_folders:
+        return None
+    return sorted(candidate_folders, key=os.path.getmtime, reverse=True)[0]
+
 
 out_log = widgets.Output()
 
 def download_results(b):
     out_log.clear_output()
     with out_log:
+        target_folder = find_target_folder()
         if not target_folder or not os.path.exists(target_folder):
             print("❌ No results found to download.")
             return
-            
-        print(f"Compressing results from: {target_folder}")
+
+        stamp = datetime.fromtimestamp(os.path.getmtime(target_folder)).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"Compressing results from: {target_folder}  (last modified {stamp})")
         
         # Timestamped filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

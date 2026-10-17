@@ -89,7 +89,12 @@ def main():
         os.chdir(output_superposer_path)
         shutil.copy(os.path.join(initial_path, "receptor.pdb"), ".") # Replaced os.system('cp ...') with shutil.copy
         
-        print(f"--- Running FrankVINA 1 ---")
+        # DIAGNOSTIC STAGE. FrankVINA 1 docks and scores every patch and writes the ten best to
+        # top_10_patches/, but nothing reads that folder: patch_clustering below globs every
+        # patch_file_*.pdb from this directory, unfiltered. The ranking is a report for the user,
+        # not a filter. Do not wire it in as one without checking that the obabel pdbqt->pdb
+        # round-trip preserves residue names, which the rest of the pipeline depends on.
+        print(f"--- Running FrankVINA 1 (diagnostic scoring; does not filter the patch set) ---")
         cmd_vina1 = [sys.executable, f'{repo_folder}/scripts/frankVINA_1.py', initial_path, str(threads)]
         print(f"CMD: {' '.join(cmd_vina1)}")
         subprocess.run(cmd_vina1, check=True)

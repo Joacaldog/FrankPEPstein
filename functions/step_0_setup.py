@@ -33,6 +33,8 @@ def run_setup():
         ("Configuring Modeller", "modeller")
     ]
     
+    modeller_ok = False
+
     with tqdm(total=len(steps)) as pbar:
         # 1. CondaColab
         pbar.set_description(steps[0][0])
@@ -82,7 +84,10 @@ import shutil
 import subprocess
 
 def configure_modeller(license_key='MODELIRANJE', repo_dir='FrankPEPstein'):
-    template_config = os.path.join(repo_dir, "utilities/config.py")
+    # The config is written directly rather than copied from a template in the repo. The old
+    # template path (repo_dir/utilities/config.py) never existed - the tools extract into
+    # ./utilities and the clone contains no utilities/ at all - so this function always
+    # returned False without writing anything, and the caller discarded the result.
     dest_config = None
     try:
         import modeller
@@ -105,14 +110,24 @@ def configure_modeller(license_key='MODELIRANJE', repo_dir='FrankPEPstein'):
                 dest_config = found[0]
                 break
 
-    if dest_config and os.path.exists(template_config):
-        with open(template_config, 'r') as f:
-            content = f.read()
-        new_content = content.replace("'MODELIRANJE'", f"'{license_key}'")
+    if not dest_config:
+        return False
+
+    # Derive install_dir from the config file we found, never hardcode a version.
+    install_dir = None
+    parts = os.path.abspath(dest_config).split(os.sep)
+    for i, part in enumerate(parts):
+        if part.startswith("modeller-"):
+            install_dir = os.sep + os.path.join(*parts[:i + 1])
+            break
+    try:
         with open(dest_config, 'w') as f:
-            f.write(new_content)
+            f.write(f"license = '{license_key}'\n")
+            if install_dir:
+                f.write(f"install_dir = r'{install_dir}'\n")
         return True
-    return False
+    except Exception:
+        return False
 
 
 
@@ -181,8 +196,11 @@ def setup_external_tools(files_id=None):
         print("Fixing permissions...")
         subprocess.run(f"chmod -R +x {utilities_dir}", shell=True)
         
-        # Add paths
-        adfr_bin = os.path.join(utilities_dir, "ADFR/bin")
+        # Add paths. This used to build utilities/ADFR/bin, but the directory was renamed to
+        # ADFRsuite_x86_64Linux_1.0 above, so the test could never pass and PATH was never
+        # extended. The frankVINA scripts invoke these tools by absolute path, so nothing was
+        # visibly broken, but anything calling them by bare name would have failed.
+        adfr_bin = os.path.join(adfr_target, "bin")
         if os.path.exists(adfr_bin) and adfr_bin not in os.environ['PATH']:
              os.environ['PATH'] += f":{adfr_bin}"
              
@@ -215,54 +233,72 @@ def setup_external_tools(files_id=None):
         # 6. Configure Modeller
         pbar.set_description(steps[5][0])
         with SuppressStdout():
-            notebook_utils.configure_modeller()
+            modeller_ok = notebook_utils.configure_modeller()
         pbar.update(1)
         
 
     # 3. Verify Executables
-    print(f"\n{'='*20}")
-    print("Verifying Executables...")
-    
-    base_dir = "FrankPEPstein" if os.path.exists("FrankPEPstein") else "."
-    utilities_dir = os.path.join(base_dir, "utilities")
-    
-    # Check Click
-    click_bin = os.path.join(utilities_dir, "Click", "bin", "click")
-    if not os.path.exists(click_bin):
-         # Try logic from superposer logic/config
-         click_bin = os.path.join(utilities_dir, "Click", "click")
-         
-    if os.path.exists(click_bin):
+    # The report is collected rather than printed, because clear_output() below used to wipe it
+    # along with every other diagnostic the setup produced.
+    report = []
+    ok = True
+    if not modeller_ok:
+        report.append("❌ Modeller license could not be configured; the refinement stage will fail.")
+        ok = False
+
+    # setup_external_tools extracts with base_dir = ".", so the tools are under ./utilities.
+    # This block used to recompute base_dir as "FrankPEPstein" whenever the clone directory
+    # existed - which it always does by this point - so both checks always failed and the
+    # chmod remediation branches below were unreachable.
+    utilities_dir = "utilities"
+
+    # Check Click. superposer.py expects utilities/click/click; test isfile, not exists, because
+    # a directory also passes os.path.exists and os.access(X_OK) and would report a false pass.
+    click_candidates = [
+        os.path.join(utilities_dir, "click", "click"),
+        os.path.join(utilities_dir, "Click", "bin", "click"),
+        os.path.join(utilities_dir, "Click", "click"),
+    ]
+    click_bin = next((c for c in click_candidates if os.path.isfile(c)), None)
+
+    if click_bin:
          if os.access(click_bin, os.X_OK):
-             print(f"✅ Click is executable.")
+             report.append(f"✅ Click is executable ({click_bin}).")
          else:
-             print(f"⚠️ Click found but NOT executable. Fixing...")
              subprocess.run(f"chmod +x {click_bin}", shell=True)
              if os.access(click_bin, os.X_OK):
-                 print(f"✅ Click fixed.")
+                 report.append(f"✅ Click found non-executable and fixed ({click_bin}).")
              else:
-                 print(f"❌ Failed to fix Click permissions.")
+                 report.append(f"❌ Failed to fix Click permissions ({click_bin}).")
+                 ok = False
     else:
-         print(f"❌ Click binary not found at {click_bin}")
+         report.append(f"❌ Click binary not found. Looked in: {', '.join(click_candidates)}")
+         ok = False
 
     # Check Vina
     vina_bin = os.path.join(utilities_dir, "vina_1.2.4_linux_x86_64")
-    if os.path.exists(vina_bin):
+    if os.path.isfile(vina_bin):
          if os.access(vina_bin, os.X_OK):
-             print(f"✅ Vina is executable.")
+             report.append(f"✅ Vina is executable.")
          else:
-             print(f"⚠️ Vina found but NOT executable. Fixing...")
              subprocess.run(f"chmod +x {vina_bin}", shell=True)
              if os.access(vina_bin, os.X_OK):
-                 print(f"✅ Vina fixed.")
+                 report.append(f"✅ Vina found non-executable and fixed.")
              else:
-                 print(f"❌ Failed to fix Vina permissions.")
+                 report.append(f"❌ Failed to fix Vina permissions.")
+                 ok = False
     else:
-         print(f"❌ Vina binary not found at {vina_bin}")
-    print(f"{'='*20}\n")
+         report.append(f"❌ Vina binary not found at {vina_bin}")
+         ok = False
 
     clear_output()
-    print("✅ Setup Ready!, The kernel was restarted. Please ignore any crash warnings.")
+    for line in report:
+        print(line)
+    if ok:
+        print("✅ Setup Ready!, The kernel was restarted. Please ignore any crash warnings.")
+    else:
+        print("❌ Setup finished WITH ERRORS - see the lines above. The pipeline will not run "
+              "correctly until they are resolved.")
 
 if __name__ == "__main__":
     run_setup()

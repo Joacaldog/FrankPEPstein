@@ -95,9 +95,19 @@ def ensure_modeller_config(key='MODELIRANJE'):
     
     if config_path and os.path.exists(config_path):
         try:
+            # Derive install_dir from the config file we just found. It used to be hardcoded to
+            # modeller-10.8, so on any environment where conda resolved a different version the
+            # path pointed at a directory that does not exist and $(LIB) could not be resolved.
+            install_dir = None
+            parts = os.path.abspath(config_path).split(os.sep)
+            for i, part in enumerate(parts):
+                if part.startswith("modeller-"):
+                    install_dir = os.sep + os.path.join(*parts[:i + 1])
+                    break
             with open(config_path, 'w') as f:
                 f.write(f"license = '{key}'\n")
-                f.write("install_dir = r'/usr/local/envs/FrankPEPstein/lib/modeller-10.8'\n") # Basic config
+                if install_dir:
+                    f.write(f"install_dir = r'{install_dir}'\n")
             return True, config_path
         except Exception as e:
             return False, str(e)
@@ -192,45 +202,43 @@ display(ui_container)
 # --- Threading & Execution ---
 stop_event = threading.Event()
 pipeline_phase = "Initializing"
+process = None  # set by run_step_2; the interrupt handler needs the name to exist
+
+def find_fragments_dir():
+    """The superpockets folder for the CURRENT run.
+
+    The folder name embeds the RMSD cutoff, so changing that parameter leaves older folders
+    behind and glob order is arbitrary. Prefer the one matching the RMSD actually in use, and
+    otherwise fall back to the most recently modified rather than whatever glob returns first.
+    """
+    base_run_dir = os.path.join(initial_path, "FrankPEPstein_run")
+    exact = os.path.join(base_run_dir, f"superpockets_residuesAligned3_RMSD{rmsd_threshold}")
+    if os.path.isdir(exact):
+        return exact
+    candidates = glob.glob(os.path.join(base_run_dir, "superpockets_residuesAligned3_RMSD*"))
+    if not candidates:
+        return None
+    return max(candidates, key=os.path.getmtime)
+
+
+def refresh_fragment_viz():
+    """One snapshot of the current fragment set. Safe to call after stop_event is set."""
+    fragments_dir = find_fragments_dir()
+    if not fragments_dir or not os.path.exists(fragments_dir):
+        return 0
+    files = glob.glob(os.path.join(fragments_dir, "patch_file_*.pdb"))
+    current_count = len(files)
+    # Sort by modification time to show newest first
+    files.sort(key=os.path.getmtime, reverse=True)
+    # Pass top 100 fragments
+    update_static_viz(files[:100], title=f"{pipeline_phase} (Fragments: {current_count})")
+    return current_count
+
 
 def monitor_fragments():
-    run_folder_name = "FrankPEPstein_run"
-    base_run_dir = os.path.join(initial_path, run_folder_name)
-    
-    # Dynamic search for RMSD folder
-    fragments_dir_pattern = os.path.join(base_run_dir, "superpockets_residuesAligned3_RMSD*")
-    fragments_dir = None
-    
-    # We loop to find the dir once it's created
-    # But inside the loop we should keep checking if it changes/appears
-    fragments_dir_candidates = glob.glob(fragments_dir_pattern)
-    if fragments_dir_candidates:
-         fragments_dir = fragments_dir_candidates[0] # Take the first one found
-    
-    last_count = 0
-    
     while not stop_event.is_set():
-        # Keep trying to find the directory if we haven't yet, or if we want to be robust to changes
-        if not fragments_dir:
-            fragments_dir_candidates = glob.glob(fragments_dir_pattern)
-            if fragments_dir_candidates:
-                fragments_dir = fragments_dir_candidates[0]
-        
-        if fragments_dir and os.path.exists(fragments_dir):
-            files = glob.glob(os.path.join(fragments_dir, "patch_file_*.pdb"))
-            current_count = len(files)
-            
-            # We update periodically regardless of new files to ensure phase title is current
-            # Sort by modification time to show newest first, limit to more if static (it's fast)
-            files.sort(key=os.path.getmtime, reverse=True)
-            
-            # Pass top 100 fragments
-            update_static_viz(files[:100], title=f"{pipeline_phase} (Fragments: {current_count})")
-            
-            if current_count > last_count:
-                last_count = current_count
-        
-        # Check stop event every 1s, but wait 10s total interval (faster update for static image)
+        refresh_fragment_viz()
+        # Check stop event every 1s, but wait 30s total interval
         for _ in range(30):
             if stop_event.is_set(): break
             time.sleep(1)
@@ -381,9 +389,10 @@ def run_step_2():
             progress_bar.bar_style = 'success'
             status_label.value = "Completed Successfully"
             
-            # Final Viz Update
+            # Final Viz Update. monitor_fragments() cannot be used here: stop_event is already
+            # set two lines above, so its loop body never runs and the last update never happened.
             pipeline_phase = "Completed"
-            monitor_fragments() # One last update calls update_static_viz
+            refresh_fragment_viz()
 
         else:
             with log_output:
@@ -395,8 +404,15 @@ def run_step_2():
         with log_output:
             print("\n🛑 Pipeline interrupted by user.")
         stop_event.set()
-        if 'process' in locals():
+        # `process` is declared global above, so it was never in locals() and this never ran;
+        # cleanup() then deleted the working directories out from under a live subprocess.
+        if process is not None:
             process.terminate()
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
         cleanup()
     except Exception as e:
         stop_event.set()

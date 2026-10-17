@@ -5,24 +5,51 @@ import shutil
 import subprocess
 import multiprocessing
 from Bio.PDB import PDBParser, PDBIO, Select
+from Bio.PDB.Chain import Chain
+
+def merge_to_chain_p(model):
+    """Collapse every chain of a model into a single chain 'p' with unique residue numbers.
+
+    Renaming each chain to 'p' independently produced several blocks all labelled 'p' with
+    colliding residue numbers; Biopython keeps only the first residue of each duplicate
+    (chain, resseq) when the file is read back, so on a multi-chain receptor roughly half the
+    pocket silently disappeared. The single chain id 'p' is load-bearing further down the
+    pipeline (superposer.py selects the pocket with `grep ' p'`), so the ids are merged rather
+    than diversified.
+    """
+    chains = list(model)
+    if len(chains) == 1:
+        chains[0].id = 'p'
+        return chains[0]
+    merged = Chain('p')
+    index = 0
+    for chain in chains:
+        for residue in list(chain):
+            chain.detach_child(residue.id)
+            index += 1
+            residue.id = (residue.id[0], index, ' ')
+            merged.add(residue)
+        model.detach_child(chain.id)
+    model.add(merged)
+    return merged
+
 
 def calculate_box_and_save(input_pocket, output_pocket):
     """
-    Reads input pocket, renames chain to 'p', saves to output_pocket,
-    and calculates gridbox with 3.0 A buffer (1.5 per side).
+    Reads input pocket, merges all chains into chain 'p', saves to output_pocket,
+    and calculates the gridbox as the tight bounding box of the pocket atoms.
     """
     try:
         parser = PDBParser(QUIET=True)
         structure = parser.get_structure("pocket", input_pocket)
-        
+
         atoms = []
         for model in structure:
-            for chain in model:
-                chain.id = 'p' # Rename to 'p'
-                for residue in chain:
-                    for atom in residue:
-                        atoms.append(atom)
-        
+            merged = merge_to_chain_p(model)
+            for residue in merged:
+                for atom in residue:
+                    atoms.append(atom)
+
         if not atoms:
             print("Error: No atoms found in pocket.")
             return None, None
@@ -37,7 +64,8 @@ def calculate_box_and_save(input_pocket, output_pocket):
         min_coord = [min([c[i] for c in coords]) for i in range(3)]
         max_coord = [max([c[i] for c in coords]) for i in range(3)]
         
-        # Buffer: User requested 0.0 buffer (no size increase)
+        # Deliberately no padding: the box is the tight bounding box of the pocket atoms.
+        # In the Colab UI the Size controls let the user add clearance interactively.
         buffer = 0.0
         
         center = [(min_coord[i] + max_coord[i]) / 2 for i in range(3)]

@@ -172,7 +172,9 @@ def render_static_view(receptor_path, pocket_path, box_center, box_size, fragmen
     ax.set_zlim(cz - max_range/2, cz + max_range/2)
     
     buf = BytesIO()
-    plt.savefig(buf, format='png', facecolor='black')
+    # fig.savefig, not plt.savefig: the latter writes pyplot's *current* figure, which is not
+    # necessarily this one when another cell has created a figure in between.
+    fig.savefig(buf, format='png', facecolor='black')
     plt.close(fig)
     buf.seek(0)
     return buf.read()

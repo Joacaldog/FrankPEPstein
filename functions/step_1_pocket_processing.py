@@ -49,8 +49,16 @@ final_pockets_list = []
 # Ensure pockets dir exists
 if not os.path.exists(pockets_dir):
     os.makedirs(pockets_dir)
-if not os.path.exists(fpocket_storage_dir):
-    os.makedirs(fpocket_storage_dir)
+
+# Drop any dropdown and pocket files left over from a previous receptor. The widget is only
+# created when fpocket finds something and is never deleted, and this directory was never
+# emptied, so re-running the cell with a new receptor could leave a stale selection pointing at
+# the old protein's pockets while receptor_filename had already moved on.
+# Scoped to fpocket_storage_dir only - pockets_dir holds the run's own working files.
+globals().pop('pocket_dropdown', None)
+shutil.rmtree(fpocket_storage_dir, ignore_errors=True)
+# exist_ok is required: rmtree(ignore_errors=True) can leave the directory behind.
+os.makedirs(fpocket_storage_dir, exist_ok=True)
 
 # --- Persistence Logic ---
 def save_pipeline_state(updates):
@@ -254,6 +262,30 @@ import os
 from Bio import PDB
 from Bio.PDB import PDBParser, PDBIO, Select, NeighborSearch
 
+def merge_to_chain_p(model):
+    # Every chain used to be renamed to 'p' independently, so a multi-chain receptor produced
+    # several blocks all labelled 'p' with colliding residue numbers. Biopython keeps only the
+    # first residue for each duplicate (chain, resseq) on re-read, so residues from every chain
+    # after the first silently vanished. Merge into one chain and renumber instead. The single
+    # chain id 'p' is load-bearing - superposer.py selects the pocket with grep ' p' - so the
+    # ids must not be diversified.
+    from Bio.PDB.Chain import Chain
+    chains = list(model)
+    if len(chains) == 1:
+        chains[0].id = 'p'
+        return chains[0]
+    merged = Chain('p')
+    idx = 0
+    for chain in chains:
+        for residue in list(chain):
+            chain.detach_child(residue.id)
+            idx += 1
+            residue.id = (residue.id[0], idx, ' ')
+            merged.add(residue)
+        model.detach_child(chain.id)
+    model.add(merged)
+    return merged
+
 def process_and_box(receptor_file, pocket_file, output_file, mode, buffer_val):
     try:
         parser = PDBParser(QUIET=True)
@@ -292,22 +324,20 @@ def process_and_box(receptor_file, pocket_file, output_file, mode, buffer_val):
              
              saved_struct = parser.get_structure("saved", temp_out)
              for model in saved_struct:
-                 for chain in model:
-                     chain.id = 'p'
-                     for residue in chain:
-                         for atom in residue:
-                             atoms_for_box.append(atom)
+                 merged = merge_to_chain_p(model)
+                 for residue in merged:
+                     for atom in residue:
+                         atoms_for_box.append(atom)
              io.set_structure(saved_struct)
              io.save(output_file)
              os.remove(temp_out)
              
         elif mode == 'direct':
              for model in pocket_struct:
-                 for chain in model:
-                     chain.id = 'p'
-                     for residue in chain:
-                         for atom in residue:
-                             atoms_for_box.append(atom)
+                 merged = merge_to_chain_p(model)
+                 for residue in merged:
+                     for atom in residue:
+                         atoms_for_box.append(atom)
              io = PDBIO()
              io.set_structure(pocket_struct)
              io.save(output_file)
@@ -340,15 +370,20 @@ if __name__ == "__main__":
     python_exe = "/usr/local/envs/FrankPEPstein/bin/python"
     if not os.path.exists(python_exe): python_exe = sys.executable
 
+    # Both failure channels this code builds were being thrown away: e.stderr/e.stdout were
+    # never read, and the child's own `print("ERROR:...")` had no branch in the parse loop
+    # below (it also exits 0, so CalledProcessError never fired for the common failure).
+    # The diagnostic is stashed on the function so the 3-tuple signature and both call sites
+    # stay unchanged.
+    run_processing_isolated.last_error = None
+    center, size = None, None
+    success = False
     try:
         result = subprocess.run(
             [python_exe, script_name, receptor_path, pocket_path, output_pocket_path, mode, str(buffer)],
-            capture_output=True, text=True, check=True
+            capture_output=True, text=True, check=False
         )
-        
-        center, size = None, None
-        success = False
-        
+
         for line in result.stdout.splitlines():
             if line.startswith("CENTER:"):
                 center = [float(x) for x in line.split(":")[1].split(",")]
@@ -356,9 +391,17 @@ if __name__ == "__main__":
                 size = [float(x) for x in line.split(":")[1].split(",")]
             elif line.startswith("SUCCESS"):
                 success = True
-            
+            elif line.startswith("ERROR"):
+                run_processing_isolated.last_error = line.split(":", 1)[-1].strip()
+
+        if not success and run_processing_isolated.last_error is None:
+            run_processing_isolated.last_error = (
+                f"child exited {result.returncode}\nSTDERR:\n{(result.stderr or '').strip()}")
+
         return center, size, success
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
+        # A missing python_exe raises FileNotFoundError, which the old handler did not catch.
+        run_processing_isolated.last_error = f"could not run {python_exe}: {e}"
         return None, None, False
 
 # --- Custom Widget Helpers ---
@@ -419,8 +462,17 @@ def initialize_ui(b):
     output_log.clear_output()
     viz_output.clear_output()
     
+    if not receptor_filename or not os.path.exists(receptor_filename):
+        with output_log:
+            print("No receptor loaded. Re-run this cell and upload a receptor PDB.")
+        return
     if 'pocket_dropdown' not in globals() or not pocket_dropdown.value:
         with output_log: print("Please select a pocket first.")
+        return
+    if pocket_dropdown.value not in final_pockets_list:
+        with output_log:
+            print("The selected pocket is not from the current receptor. Re-run this cell and "
+                  "pick a pocket again.")
         return
 
     # 1. Calc Initial
@@ -432,10 +484,14 @@ def initialize_ui(b):
     with output_log: print("Checking pocket parameters...")
     center, size, success = run_processing_isolated(receptor_filename, src_pocket_path, temp_pocket_path, mode=mode)
     
-    if not success:
-        with output_log: print("Failed calculating defaults.")
+    box_failed = not success
+    if box_failed:
+        # Keep the fallback (removing it strands Manual Upload users), but the warning must
+        # survive the clear_output() that builds the control panel below, and must not look
+        # like a legitimately computed box.
         center = [0.0, 0.0, 0.0]
         size = [20.0, 20.0, 20.0]
+    box_error = getattr(run_processing_isolated, "last_error", None)
 
     cx, cy, cz = center
     sx, sy, sz = size
@@ -482,7 +538,15 @@ def initialize_ui(b):
     # Display UI
     with output_log:
         clear_output()
+        if box_failed:
+            display(widgets.HTML(
+                "<div style='background:#8b0000;color:#fff;padding:8px;font-weight:bold'>"
+                "NO BOX COMPUTED - the values below are placeholders, not derived from your "
+                "pocket. Do not confirm until you set real coordinates."
+                "</div>"))
         display(ui_container)
+        if box_failed and box_error:
+            print(f"Reason: {box_error}")
     
     first_render = True
     update_visual(None)

@@ -17,9 +17,9 @@ graph TD
     Clean --> Gridbox
 
     Gridbox -->|"Coords & Pocket"| Super["Superposer"]
-    Super -->|Fragments| Vina1["FrankVINA 1 (Scoring)"]
-    Vina1 --> Cluster["Patch Clustering"]
-    Cluster --> Vina2["FrankVINA 2 (Refinement)"]
+    Super --> Vina1["FrankVINA 1 (diagnostic scoring report)"]
+    Super -->|Fragments| Cluster["Patch Clustering"]
+    Cluster --> Vina2["FrankVINA 2 (Refinement + full-receptor rescore)"]
 
     Vina2 -->|"Top Candidates"| Seq["Seq Extraction"]
     Seq --> MSA["Multifasta Generation"]

@@ -40,6 +40,12 @@ def visualize_candidates():
     standard_pocket_path = os.path.join(initial_path, "pocket.pdb")
     if os.path.exists(standard_pocket_path):
         extracted_pocket_path = standard_pocket_path
+    elif extracted_pocket_path and not os.path.exists(extracted_pocket_path):
+        print(f"⚠️ Pocket not found at {standard_pocket_path} nor at the recorded path "
+              f"{extracted_pocket_path}; the pocket will be missing from the view.")
+    elif not extracted_pocket_path:
+        print(f"⚠️ No pocket path recorded and {standard_pocket_path} does not exist; "
+              f"the pocket will be missing from the view.")
     
     # 2. Find Candidates
     run_base = os.path.join(initial_path, "FrankPEPstein_run")
@@ -75,8 +81,11 @@ def visualize_candidates():
         if extracted_pocket_path and os.path.exists(extracted_pocket_path):
             with open(extracted_pocket_path, 'r') as f:
                 view.addModel(f.read(), "pdb")
-            # Orange surface as requested
-            view.addSurface(py3Dmol.SES, {'opacity': 0.6, 'color': 'orange'})
+            pocket_model = view.getModel()
+            # Scope the surface to the pocket model. Without the selector this painted every
+            # atom loaded so far, i.e. the whole receptor, orange.
+            view.addSurface(py3Dmol.SES, {'opacity': 0.6, 'color': 'orange'},
+                            {'model': pocket_model})
             # Also show atoms slightly to define center
             view.setStyle({'model': -1}, {'sphere': {'radius': 0.5, 'color': 'orange', 'opacity': 0.0}}) # Hidden atoms, just surface
 
