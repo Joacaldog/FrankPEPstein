@@ -120,6 +120,13 @@ def main():
             elif os.path.exists(cluster_dir):
                 os.chdir(cluster_dir)
                 shutil.copy(pocket_pdb, ".") # Modified: Copy pocket instead of receptor for VINA 2 speedup
+                # Also stage the full receptor: frankVINA_2 screens against the pocket shell for
+                # speed, then rescores the surviving candidates against the whole protein.
+                full_receptor = os.path.join(initial_path, "receptor.pdb")
+                if os.path.exists(full_receptor):
+                    shutil.copy(full_receptor, ".")
+                else:
+                    print(f"Warning: {full_receptor} not found; skipping the full-receptor rescore.")
 
                 print(f"--- Running FrankVINA 2 ---")
                 # List form, not a shell string: initial_path is an arbitrary filesystem path.
@@ -138,8 +145,9 @@ def main():
                     # Narrow cleanup of the staged inputs only, never a bare glob.
                     for leftover in glob.glob("frag_*.pdb"):
                         os.remove(leftover)
-                    if os.path.exists("pocket.pdb"):
-                        os.remove("pocket.pdb")
+                    for staged in ("pocket.pdb", "receptor.pdb"):
+                        if os.path.exists(staged):
+                            os.remove(staged)
 
                 # Return to the superposer output dir: the patch-file move below assumes it.
                 os.chdir(output_superposer_path)
