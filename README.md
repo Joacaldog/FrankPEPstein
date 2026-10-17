@@ -13,7 +13,7 @@ graph TD
     Detect -->|Manual| Upload["Upload Pocket PDB"]
     Fpocket -->|Selection| Extract["Extract 5Å Shell"]
     Upload -->|Direct| Clean["Rename Chain to 'p'"]
-    Extract --> Gridbox["Calculate Gridbox (+3Å Buffer)"]
+    Extract --> Gridbox["Calculate Gridbox (tight to pocket atoms)"]
     Clean --> Gridbox
 
     Gridbox -->|"Coords & Pocket"| Super["Superposer"]
@@ -46,7 +46,7 @@ Run the first cell. This will:
     *   **Auto Detect**: Uses `fpocket` to find potential binding sites. Select one from the dropdown to extract it (residues within 5Å are preserved).
     *   **Manual Upload**: Upload a pre-defined pocket PDB. It will be used directly to define the gridbox.
 *   **Visualisation**: The receptor (white surface) and selected pocket (colored sphere) are displayed.
-*   **Gridbox**: The script automatically calculates a gridbox centered on the pocket with a **3.0 Å buffer** beyond the pocket atoms.
+*   **Gridbox**: The script automatically calculates a gridbox as the **tight bounding box of the pocket atoms** (no buffer added). Use the Center/Size controls in the UI to enlarge or shift it before confirming.
 
 ### 3. Run Generation
 *   **Configure**:
@@ -106,8 +106,12 @@ python3 scripts/run_local.py \
   --pocket my_pocket.pdb \
   --pep_size 8 \
   --threads 36 \
-  --candidates 10
+  --candidates 10 \
+  --sampling 500 \
+  --rmsd_allowed 0.5
 ```
+
+`--sampling` caps both the number of residue combinations explored during clustering and the number of peptides carried into the final MODELLER + Vina refinement. It is the main runtime knob: refinement cost scales roughly linearly with it.
 
 **What this does:**
 1.  Copies your receptor and pocket to the run directory.

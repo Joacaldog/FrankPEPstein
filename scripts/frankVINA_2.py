@@ -44,8 +44,6 @@ OBABEL_PATH = os.path.join(ADFR_BIN, "obabel")
 frank_folder_init = os.getcwd()
 tqdm._instances.clear()
 
-MAX_PEPTIDES = 50  # Límite de muestreo
-
 def run_cmd(cmd):
     subprocess.run(cmd, shell=True, check=False,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

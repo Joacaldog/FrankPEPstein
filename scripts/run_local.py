@@ -56,7 +56,9 @@ def main():
     parser.add_argument("-w", "--pep_size", type=int, default=8, help="Peptide size (kmer)")
     parser.add_argument("-t", "--threads", type=int, default=multiprocessing.cpu_count(), help="Number of threads (default: all cpus)")
     parser.add_argument("-c", "--candidates", type=int, default=10, help="Number of candidates")
-    
+    parser.add_argument("-s", "--sampling", type=int, default=500, help="Subsampling limit for Vina screening")
+    parser.add_argument("-rmsd", "--rmsd_allowed", type=float, default=0.5, help="RMSD cutoff for superposer")
+
     args = parser.parse_args()
     
     # Setup Paths
@@ -110,6 +112,8 @@ def main():
         "-w", str(args.pep_size),
         "-t", str(args.threads),
         "-c", str(args.candidates),
+        "-s", str(args.sampling),
+        "-rmsd", str(args.rmsd_allowed),
         "-xc", str(center[0]),
         "-yc", str(center[1]),
         "-zc", str(center[2]),
