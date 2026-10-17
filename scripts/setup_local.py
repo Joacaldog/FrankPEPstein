@@ -53,7 +53,7 @@ def main():
         log(f"⚠️ Environment '{env_name}' already exists. Skipping creation.", YELLOW)
         log("To recreate, delete it first: conda env remove -n FrankPEPstein", YELLOW)
     else:
-        log(f"Creating Conda Environment '{env_name}'... (This may take a while)", parse_color=GREEN)
+        log(f"Creating Conda Environment '{env_name}'... (This may take a while)", GREEN)
         cmd = (
             f"{conda_cmd} create -n {env_name} -y -c conda-forge -c salilab "
             "openbabel biopython fpocket joblib tqdm py3dmol vina pigz scipy scikit-learn matplotlib python=3.10 salilab::modeller"

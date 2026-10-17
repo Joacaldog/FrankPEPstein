@@ -265,6 +265,11 @@ def run_click(file):
                     except:
                         pass
                     new_peptide = []
+                    if not pocket:
+                        # No chain 'p' was recovered from the superposed file, so there is nothing to
+                        # check clashes against. The test below is vacuously true on an empty distance
+                        # list, which would wave every residue through unchecked; bail out instead.
+                        return
                     for residue_pep in fragment:
                         dist_pocket_list = []
                         for residue_poc in pocket:

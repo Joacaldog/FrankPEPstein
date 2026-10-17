@@ -24,6 +24,11 @@ try:
     MAX_PEPTIDES = int(sys.argv[4])
 except IndexError:
     MAX_PEPTIDES = 500 # Default if not provided
+try:
+    SEED = int(sys.argv[5])
+except IndexError:
+    SEED = 0
+random.seed(SEED)
 ADFR_DIR = os.path.join(initial_path, "utilities/ADFRsuite_x86_64Linux_1.0")
 ADFR_BIN = os.path.join(ADFR_DIR, "bin")
 ADFR_LIB = os.path.join(ADFR_DIR, "lib")
@@ -148,6 +153,14 @@ def main():
         os.makedirs("results_folder")
 
     def vina_scorer(file):
+        # joblib's SequentialBackend (n_jobs=1, e.g. -t 1 or a 1-vCPU host) runs this in the calling
+        # process, so the chdir below would leak into main() and break every path after the loop.
+        try:
+            _vina_scorer(file)
+        finally:
+            os.chdir(frank_folder_init)
+
+    def _vina_scorer(file):
         os.chdir(frank_folder_init)
         if "noEND" not in file:
             run_cmd(f"mv {file} temp_folder 2> /dev/null")
@@ -180,7 +193,8 @@ def main():
 
     # Filtrar los 'frag*.pdb'
     all_files = os.listdir(".")
-    frag_files = [f for f in all_files if fnmatch.fnmatch(f, 'frag*.pdb')]
+    # Sorted so that the seeded sample below does not depend on os.listdir order.
+    frag_files = sorted(f for f in all_files if fnmatch.fnmatch(f, 'frag*.pdb'))
 
     total_combinations = len(frag_files)
     print(f"Total Combinations Found: {total_combinations}")
@@ -199,7 +213,7 @@ def main():
     )
 
     print("Minimization complete. Ranking results...")
-    os.chdir("results_folder")
+    os.chdir(os.path.join(frank_folder_init, "results_folder"))
     scoring_filter()
     os.chdir(frank_folder_init)
     

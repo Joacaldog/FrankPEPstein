@@ -58,12 +58,16 @@ def main():
     parser.add_argument("-c", "--candidates", type=int, default=10, help="Number of candidates")
     parser.add_argument("-s", "--sampling", type=int, default=500, help="Subsampling limit for Vina screening")
     parser.add_argument("-rmsd", "--rmsd_allowed", type=float, default=0.5, help="RMSD cutoff for superposer")
+    parser.add_argument("-seed", "--seed", type=int, default=0, help="Random seed for the sampling steps, for reproducible runs")
 
     args = parser.parse_args()
     
     # Setup Paths
     current_dir = os.getcwd()
-    repo_folder = os.path.join(current_dir, "FrankPEPstein")
+    # Derive the repo root from this file, not from cwd: setup_local.py requires cwd to be
+    # the repo root, while the Colab layout has the repo as a subdirectory of cwd. Deriving
+    # from __file__ satisfies both.
+    repo_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     scripts_folder = os.path.join(repo_folder, "scripts")
     run_script = os.path.join(scripts_folder, "run_FrankPEPstein.py")
     
@@ -114,6 +118,7 @@ def main():
         "-c", str(args.candidates),
         "-s", str(args.sampling),
         "-rmsd", str(args.rmsd_allowed),
+        "-seed", str(args.seed),
         "-xc", str(center[0]),
         "-yc", str(center[1]),
         "-zc", str(center[2]),

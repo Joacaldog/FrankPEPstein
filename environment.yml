@@ -12,6 +12,12 @@ dependencies:
   - tqdm
   - py3dmol
   - modeller
+  - numpy
+  - scipy
+  - scikit-learn
+  - pandas
+  - matplotlib
   - pip
   - pip:
     - gdown
+    - logomaker

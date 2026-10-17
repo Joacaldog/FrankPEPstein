@@ -40,10 +40,13 @@ parser.add_argument("-t", "--threads", type=int,
                     help="Number of threads to utilize", required=True)
 parser.add_argument("-c", "--max_combinations", type=int,
                     help="Max number of combinations to sample", required=False, default=100)
+parser.add_argument("-seed", "--seed", type=int,
+                    help="Seed for the combination sampling, for reproducible runs", required=False, default=0)
 args = parser.parse_args()
 winsize = args.winsize
 threads = args.threads
 MAX_COMBINATIONS = args.max_combinations
+random.seed(args.seed)
 
 d3to1 = {'CYS': 'C', 'ASP': 'D', 'SER': 'S', 'GLN': 'Q', 'LYS': 'K', 'ILE': 'I', 'PRO': 'P', 'THR': 'T', 'PHE': 'F', 'ASN': 'N',
          'GLY': 'G', 'HIS': 'H', 'LEU': 'L', 'ARG': 'R', 'TRP': 'W', 'ALA': 'A', 'VAL': 'V', 'GLU': 'E', 'TYR': 'Y', 'MET': 'M'}
@@ -439,8 +442,11 @@ def combinator():
                 dist_bond_pass += 1
 
                     
-            for i in range(1, len(mid_residues)):
-                prod_rest_list2 = []  
+            # Consume mid_residues until empty. The previous `range(1, len(mid_residues))` bound
+            # discounted the residue already removed above, so the loop ran one iteration short and
+            # every assembled peptide silently lost its last middle residue.
+            while mid_residues:
+                prod_rest_list2 = []
                 prev_res = [peptide_ordered[-1]]
                 prod_res = product(prev_res, mid_residues)
                 for res_pair in prod_res:

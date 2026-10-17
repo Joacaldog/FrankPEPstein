@@ -52,8 +52,10 @@ def scoring_filter():
                     line = line.strip()
                     if "Estimated" in line:
                         energy_value = line.split(":")[1].split(" ")[1]
-                        energy_patch = float(energy_value), file
-                        energy_patch_list.append(energy_patch)
+                        # Keep only favourable scores, as stage 2 does. Without this the top-10 is
+                        # filled with the least-bad positive (i.e. clashing) poses when nothing binds.
+                        if float(energy_value) < 0:
+                            energy_patch_list.append((float(energy_value), file))
 
     sorted_list = sorted(energy_patch_list,key=itemgetter(0))
     if len(sorted_list) >= 1:

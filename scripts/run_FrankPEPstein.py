@@ -13,6 +13,7 @@ def main():
     parser.add_argument("-c", "--candidates", type=int, default=10, help="Number of candidates for Step 2")
     parser.add_argument("-s", "--sampling", type=int, default=500, help="Subsampling limit for Vina screening")
     parser.add_argument("-rmsd", "--rmsd_allowed", type=float, default=0.5, help="RMSD cutoff for superposer")
+    parser.add_argument("-seed", "--seed", type=int, default=0, help="Random seed for the sampling steps, for reproducible runs")
     
     # Gridbox Parameters (Required for superposer)
     parser.add_argument("-xc", "--x_center", type=float, required=True, help="Resulting box center X")
@@ -29,7 +30,9 @@ def main():
     candidates_number = args.candidates
     
     initial_path = os.getcwd()
-    repo_folder = os.path.join(initial_path, "FrankPEPstein")
+    # Derive the repo root from this file rather than cwd (see run_local.py for the rationale).
+    # initial_path stays cwd: it locates DB/, utilities/ and the run folder, which are data, not code.
+    repo_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
     # DB Paths
     minipockets_folder = os.path.join(initial_path, "DB/minipockets_surface80_winsize3_size3")
@@ -90,10 +93,12 @@ def main():
         print(f"CMD: {' '.join(cmd_vina1)}")
         subprocess.run(cmd_vina1, check=True)
         
-        # os.system("rm * 2> /dev/null") # Cleanup (careful, this might delete logs/pdbs if script failed, but following original logic)
-        # Replaced with subprocess.run
-        subprocess.run(["rm", "*"], check=False, stderr=subprocess.DEVNULL) # check=False as original had 2> /dev/null
-        
+        # NOTE: do NOT add a cleanup sweep of this directory here. An earlier `rm *` lived at this
+        # point and never actually deleted anything (no shell, so the `*` was a literal filename).
+        # The patch discovery immediately below reads patch_file_*.pdb from this very directory, so a
+        # working glob would wipe the superposer's entire output and leave the run silently empty.
+        # The only leftovers are H_receptor.pdb and receptor.pdbqt, which are overwritten on re-run.
+
         # 3. Patch Clustering & FrankVINA 2
         print(f"--- Checking for patches ---")
         patch_files = [x for x in os.listdir(".") if "patch_file" in x]
@@ -102,7 +107,7 @@ def main():
             print("No patch files in folder")
         elif len(patch_files) > 1:
             print(f"Running patch_clustering with kmer: {pep_size} ")
-            cmd_clustering = [sys.executable, f'{repo_folder}/scripts/patch_clustering.py', '-w', str(pep_size), '-t', str(threads), '-c', str(args.sampling)]
+            cmd_clustering = [sys.executable, f'{repo_folder}/scripts/patch_clustering.py', '-w', str(pep_size), '-t', str(threads), '-c', str(args.sampling), '-seed', str(args.seed)]
             print(f"CMD: {' '.join(cmd_clustering)}")
             os.system(f"{' '.join(cmd_clustering)}")
             
@@ -112,7 +117,7 @@ def main():
                 shutil.copy(pocket_pdb, ".") # Modified: Copy pocket instead of receptor for VINA 2 speedup
                 
                 print(f"--- Running FrankVINA 2 ---")
-                cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} {threads} {candidates_number} {args.sampling}'
+                cmd_vina2 = f'{sys.executable} {repo_folder}/scripts/frankVINA_2.py {initial_path} {threads} {candidates_number} {args.sampling} {args.seed}'
                 print(f"CMD: {cmd_vina2}")
                 os.system(cmd_vina2)
                 
