@@ -119,6 +119,14 @@ python3 scripts/run_local.py \
 3.  Calculates the Gridbox parameters locally.
 4.  Executes `scripts/run_FrankPEPstein.py` with the correct arguments.
 
+### GPU backends (optional)
+
+The run is CPU-only unless you ask for a GPU backend, and the GPU backends are GPU-only: they
+never fall back to CPU. `FRANKPEP_RESCORE_BACKEND=gnina` adds GNINA's CNN columns to the final
+TSV and requires a GPU and the `gnina` binary; if either is missing, FrankVINA 2 stops at the
+start of the stage with a message naming what to fix. Check a machine first with
+`python3 scripts/gpu_check.py`; see [docs/gpu.md](docs/gpu.md).
+
 ---
 
 ## Developer Guide
