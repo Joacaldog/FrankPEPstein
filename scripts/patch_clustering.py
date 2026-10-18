@@ -98,14 +98,27 @@ def build_peptide(peptide_ordered):
         builder.init_residue(residue.get_resname(), " ", j, " ")
         for atom in residue.get_atoms():
             builder.residue.add(atom.copy())
-    return builder.get_structure()
+    structure = builder.get_structure()
+    if any(atom.element == "X" for atom in structure.get_atoms()):
+        # Biopython could not tell these atoms' element from the patch file. The old pipeline
+        # wrote the peptide out and parsed it back, which re-guessed the element from the name
+        # as PDBIO realigns it (an "HA2" can come back as H). Keep that round trip for them.
+        buffer = StringIO()
+        pdb_writer = PDBIO()
+        pdb_writer.set_structure(structure)
+        pdb_writer.save(buffer, preserve_atom_numbering=False)
+        buffer.seek(0)
+        structure = PDBParser().get_structure("pep", buffer)
+    return structure
 
 
 def add_backbone_conect(pdb_text):
     """Drop END records and append CONECT records for the peptide bonds, then END.
 
     The atom numbers are taken from the N and C records in order: every C is bonded to the N
-    that follows it. The first N (atom 1) and the last C have no partner.
+    that follows it. The first N (atom 1) and the last C have no partner. An odd count (a backbone
+    N or C split into altlocs, or a residue not starting with N) cannot be paired that way; the
+    fragment is then written as PDBIO produced it, without CONECT records, as before.
     """
     bond_list = []
     for line in pdb_text.splitlines():
@@ -114,6 +127,8 @@ def add_backbone_conect(pdb_text):
         if atom_name in ("N", "C") and atom_number != "1":
             bond_list.append(atom_number)
     bond_list = bond_list[:-1]
+    if len(bond_list) % 2:
+        return pdb_text
     body = "".join(line for line in pdb_text.splitlines(keepends=True) if "END" not in line)
     conect = "".join(f"CONECT{bond_list[i].rjust(5)}{bond_list[i + 1].rjust(5)}\n"
                      for i in range(0, len(bond_list), 2))
@@ -217,7 +232,9 @@ if len([x for x in os.listdir(".") if "patch_file" in x]) > 2:
             os.makedirs("outlier_folder")
         for outlier in outliers_3d:
             file = outlier[1]
-            shutil.move(file, "outlier_folder")
+            # Name the destination file: given only the folder, shutil.move refuses to overwrite
+            # an outlier left there by an earlier run, where mv replaced it.
+            shutil.move(file, os.path.join("outlier_folder", file))
 
 def combinator():
     res_dict = {}
