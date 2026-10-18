@@ -223,6 +223,17 @@ def kmerizator(pdb_file_no_extension, k_mers_list):
             continue
   
 
+def remove_residue(residues, target):
+    """Remove `target` itself from `residues`.
+
+    list.remove() matches by ==, and Biopython residue equality compares full_id without the
+    structure id, so a residue from another patch file with the same chain and number counts
+    as equal. remove() would then drop that other residue, leaving `target` duplicated in the
+    assembled peptide and the other one lost.
+    """
+    del residues[next(i for i, res in enumerate(residues) if res is target)]
+
+
 def find_outliers_linear_trend(coordinates_list, threshold_multiplier=OUTLIER_THRESHOLD):
     """Flag patch centroids that sit far from the bulk of the patch cloud.
 
@@ -485,7 +496,7 @@ def combinator():
             next_res = sorted_list[0][1]
             peptide_ordered.append(start_res)
             peptide_ordered.append(next_res)
-            mid_residues.remove(next_res)
+            remove_residue(mid_residues, next_res)
             dist_bond1 = next_res["N"] - start_res["C"]
             dist_bond2 = start_res["N"] - next_res["C"]
             if dist_bond1 < dist_bond2:
@@ -508,7 +519,7 @@ def combinator():
                 sorted_list = sorted(prod_rest_list2,key=itemgetter(2))
                 next_res = sorted_list[0][1]
                 peptide_ordered.append(next_res)
-                mid_residues.remove(next_res)
+                remove_residue(mid_residues, next_res)
             peptide_ordered.append(end_res)
 
             # if len(peptide_ordered) >= 5:
