@@ -1,42 +1,60 @@
-"""GPU backends for the docking and rescoring stages, opt-in with a CPU fallback.
+"""GPU discovery and preflight checks for the docking, rescoring and co-folding stages.
 
-The pipeline's default behaviour does not change: every backend here is off unless an
-environment variable asks for it, and every backend degrades to the CPU path it replaces
-instead of failing the run.
+This path is GPU-only by design: there is no CPU fallback here. A missing GPU, a card too old
+for the stage, or a missing Uni-Dock / GNINA binary raises GpuUnavailableError. That is the
+point of the module. A run that silently degrades to CPU still finishes and still writes a TSV,
+so its timings and its rankings end up compared against GPU runs as if they were the same
+thing; failing at the start, with a message saying what to fix, is the cheaper outcome.
 
-Two environment variables drive it:
+Two capability floors matter, and they are not the same number:
 
-    FRANKPEP_DOCK_BACKEND     vina (default) | unidock
-    FRANKPEP_RESCORE_BACKEND  vina (default) | gnina | consensus
+    MIN_COMPUTE_CAPABILITY     6.1   Uni-Dock and GNINA; Pascal (GTX 1080 / 1080 Ti) clears it
+    MODERN_COMPUTE_CAPABILITY  8.0   bfloat16 and tensor cores, i.e. Boltz-2 and Chai-1
 
-`consensus` keeps the Vina score and adds GNINA's CNN score as an extra column, which is the
-conservative way to try a new scoring function: nothing is discarded on its word alone.
+That split is why both exist: the lab machine's six GTX 1080 Ti cards can dock and rescore but
+cannot run the co-folding models, while the desktop's RTX 5070 Ti (compute 12.0) can do both and
+the GTX 1080 next to it cannot.
 
-Hardware note, because it decides what is worth enabling on which machine: Uni-Dock and GNINA
-run on Pascal cards (GTX 1080 / 1080 Ti, compute capability 6.1), so they need no new hardware.
-Co-folding models such as Boltz-2 need tensor cores and bfloat16, which means compute capability
-8.0 or newer; `describe_environment()` reports both so a run can say which path it can take.
+Binary locations can be overridden per machine, which is the normal case on a shared box where
+neither tool is on PATH:
+
+    FRANKPEP_UNIDOCK_PATH   Uni-Dock binary
+    FRANKPEP_GNINA_PATH     GNINA binary
+
+`describe_environment()` reports all of this for the run log and never raises; the require_*
+functions are the ones that stop a run.
 """
 
 import os
 import shutil
 import subprocess
 
-DEFAULT_DOCK_BACKEND = "vina"
-DEFAULT_RESCORE_BACKEND = "vina"
+# Floor for Uni-Dock and GNINA. Pascal sits exactly on it, which is the whole reason the GPU
+# docking work could start on the hardware the lab already had.
+MIN_COMPUTE_CAPABILITY = 6.1
 
-DOCK_BACKENDS = ("vina", "unidock")
-RESCORE_BACKENDS = ("vina", "gnina", "consensus")
-
-# Compute capability at or above which bfloat16 and tensor cores are available, i.e. the floor
-# for the co-folding models (Boltz-2, Chai-1). Pascal sits below it; Ampere and newer above.
+# Floor for bfloat16 and tensor cores, i.e. the co-folding models. Ampere and newer clear it.
 MODERN_COMPUTE_CAPABILITY = 8.0
 
 _NVIDIA_SMI_QUERY = "index,name,compute_cap,memory.total"
+_NVIDIA_SMI_FORMAT = "csv,noheader,nounits"
+
+
+class GpuUnavailableError(RuntimeError):
+    """Raised when a GPU or a GPU binary this run needs is not available.
+
+    Nothing in the GPU path catches this: a stage that cannot reach the hardware it was asked
+    for stops, it does not quietly run something else. RuntimeError is the base so a caller that
+    already guards a stage with `except RuntimeError` keeps working.
+    """
 
 
 class Gpu:
-    """One GPU as nvidia-smi reports it."""
+    """One GPU as nvidia-smi reports it.
+
+    `compute_cap` and `memory_mib` are None when nvidia-smi could not give a number for them
+    (it prints "[N/A]" for both on some virtualised and very old-driver setups).
+    """
 
     def __init__(self, index, name, compute_cap, memory_mib):
         self.index = index
@@ -46,25 +64,45 @@ class Gpu:
 
     @property
     def supports_modern_models(self):
-        """True when this card can run bfloat16 transformer models such as Boltz-2."""
+        """True when this card has bfloat16 and tensor cores, i.e. can run Boltz-2 or Chai-1."""
+        # An unknown capability counts as unsupported. Refusing a card we cannot identify costs
+        # a clear error message; guessing costs a stage that dies inside CUDA an hour later.
         return self.compute_cap is not None and self.compute_cap >= MODERN_COMPUTE_CAPABILITY
 
+    @property
+    def supports_docking(self):
+        """True when this card can run Uni-Dock and GNINA."""
+        return self.compute_cap is not None and self.compute_cap >= MIN_COMPUTE_CAPABILITY
+
     def __repr__(self):
-        cap = "unknown" if self.compute_cap is None else f"{self.compute_cap:g}"
-        return f"Gpu(index={self.index}, name={self.name!r}, compute_cap={cap}, memory_mib={self.memory_mib})"
+        cap = "unknown" if self.compute_cap is None else f"{self.compute_cap:.1f}"
+        return (f"Gpu(index={self.index}, name={self.name!r}, compute_cap={cap}, "
+                f"memory_mib={self.memory_mib})")
+
+
+def _override_variable(tool):
+    """Name of the environment variable that overrides where `tool` lives."""
+    return f"FRANKPEP_{tool.strip().upper()}_PATH"
+
+
+def _describe_gpu(gpu):
+    """One line of fact about a card, shared by the run log and the error messages."""
+    cap = "unknown" if gpu.compute_cap is None else f"{gpu.compute_cap:.1f}"
+    memory = "unknown" if gpu.memory_mib is None else f"{gpu.memory_mib} MiB"
+    return f"GPU {gpu.index}: {gpu.name}, compute {cap}, {memory}"
 
 
 def _run_nvidia_smi(runner=None):
     """Return nvidia-smi's CSV output, or None when the tool is absent or fails."""
     if runner is None:
-        # Only the real path needs the lookup; an injected runner stands in for the tool.
+        # The PATH lookup belongs to the real path only: an injected runner *is* the stand-in
+        # for nvidia-smi, so the tests must work on a machine where the executable is absent.
         if shutil.which("nvidia-smi") is None:
             return None
         runner = subprocess.run
     try:
         result = runner(
-            ["nvidia-smi", f"--query-gpu={_NVIDIA_SMI_QUERY}",
-             "--format=csv,noheader,nounits"],
+            ["nvidia-smi", f"--query-gpu={_NVIDIA_SMI_QUERY}", f"--format={_NVIDIA_SMI_FORMAT}"],
             check=False, capture_output=True, text=True)
     except OSError:
         return None
@@ -76,8 +114,10 @@ def _run_nvidia_smi(runner=None):
 def parse_nvidia_smi(output):
     """Parse the CSV rows of `nvidia-smi --query-gpu` into Gpu objects.
 
-    Kept separate from the call so it can be tested without a GPU present. Rows that do not
-    parse are skipped rather than raising: a partially readable nvidia-smi is still useful.
+    Separate from the call so the whole decision layer is testable without a GPU. Rows that do
+    not parse are skipped rather than raising: one odd row should not hide the cards that did
+    report properly, and a card that comes back with an unknown capability is refused later by
+    its own capability properties anyway.
     """
     gpus = []
     for line in (output or "").splitlines():
@@ -88,144 +128,150 @@ def parse_nvidia_smi(output):
             index = int(fields[0])
         except ValueError:
             continue
+        # The numbers are read from the end and the name is whatever sits between: a model name
+        # can itself contain a comma, and losing a real card to that would fail an otherwise
+        # usable machine.
         try:
-            compute_cap = float(fields[2])
+            compute_cap = float(fields[-2])
         except ValueError:
             compute_cap = None
         try:
-            memory_mib = int(float(fields[3]))
+            memory_mib = int(float(fields[-1]))
         except ValueError:
             memory_mib = None
-        gpus.append(Gpu(index=index, name=fields[1], compute_cap=compute_cap,
+        name = ", ".join(fields[1:-2])
+        gpus.append(Gpu(index=index, name=name, compute_cap=compute_cap,
                         memory_mib=memory_mib))
     return gpus
 
 
 def detect_gpus(runner=None):
-    """List the GPUs visible to this process. Empty list when there are none."""
+    """List the GPUs nvidia-smi reports. Empty list when there are none.
+
+    `runner` replaces subprocess.run, for tests. A missing or failing nvidia-smi is reported as
+    "no GPU" here, not as an error: the require_* functions below own the decision to stop.
+    """
     return parse_nvidia_smi(_run_nvidia_smi(runner=runner))
 
 
-def _binary_for(backend, env=None):
-    """Path to a backend's executable, honouring an explicit override.
+def require_gpus(runner=None):
+    """The GPUs this run may dock on, or raise GpuUnavailableError.
 
-    FRANKPEP_UNIDOCK_PATH / FRANKPEP_GNINA_PATH let a machine point at a binary that is not on
-    PATH, which is the normal case for a shared lab machine.
+    Only the cards that clear MIN_COMPUTE_CAPABILITY come back, so a caller never has to
+    re-check: anything in the returned list can run Uni-Dock and GNINA.
+    """
+    gpus = detect_gpus(runner=runner)
+    if not gpus:
+        raise GpuUnavailableError(
+            "No GPU is visible: nvidia-smi reported no device. This stage is GPU-only and has "
+            "no CPU fallback. Check that `nvidia-smi --query-gpu="
+            f"{_NVIDIA_SMI_QUERY} --format={_NVIDIA_SMI_FORMAT}` runs and lists your cards "
+            "(an older driver that does not know the compute_cap field fails this query), that "
+            "CUDA_VISIBLE_DEVICES is not hiding them, and otherwise run this stage on a machine "
+            "with a GPU.")
+
+    usable = [gpu for gpu in gpus if gpu.supports_docking]
+    if not usable:
+        found = "; ".join(_describe_gpu(gpu) for gpu in gpus)
+        raise GpuUnavailableError(
+            f"No visible GPU meets compute capability {MIN_COMPUTE_CAPABILITY:g}, the floor for "
+            f"Uni-Dock and GNINA. Found: {found}. This stage is GPU-only and has no CPU "
+            f"fallback: run it on a card of compute capability {MIN_COMPUTE_CAPABILITY:g} or "
+            "newer (GTX 1080 Ti and up), or select such a card with CUDA_VISIBLE_DEVICES.")
+    return usable
+
+
+def require_binary(tool, env=None):
+    """Path to `tool`'s executable ("unidock", "gnina"), or raise GpuUnavailableError.
+
+    The override variable is consulted first and, when it is set, it is the only thing
+    consulted: a stale FRANKPEP_*_PATH then fails loudly instead of resolving to some other
+    build that happens to be on PATH, which would be the same silent substitution this module
+    exists to prevent.
     """
     env = os.environ if env is None else env
-    override = env.get(f"FRANKPEP_{backend.upper()}_PATH")
+    tool = tool.strip()
+    variable = _override_variable(tool)
+    override = (env.get(variable) or "").strip()
+
     if override:
-        return override if os.path.exists(override) else None
-    return shutil.which(backend)
+        if os.path.exists(override):
+            return override
+        raise GpuUnavailableError(
+            f"{variable} is set to {override!r}, which does not exist. Point {variable} at the "
+            f"{tool} binary, or unset it to look {tool} up on PATH. This stage is GPU-only: "
+            f"there is no CPU fallback for {tool}.")
+
+    found = shutil.which(tool)
+    if found:
+        return found
+    raise GpuUnavailableError(
+        f"The {tool} binary was not found on PATH. Install {tool} or set {variable} to its full "
+        f"path. This stage is GPU-only: there is no CPU fallback for {tool}.")
 
 
-def resolve_dock_backend(env=None, runner=None):
-    """Decide which docking backend to use.
+def visible_device_indices(env=None, runner=None):
+    """Indices of the GPUs this process may use, or raise GpuUnavailableError.
 
-    Returns (name, reason). `name` is always a backend that can actually run here, so callers
-    never have to handle a missing binary; `reason` says why, for the run log.
+    CUDA_VISIBLE_DEVICES lists *physical* indices, so it is intersected with what nvidia-smi
+    reported and the result stays in that physical numbering: a child process launched with
+    CUDA_VISIBLE_DEVICES=<one of these> sees that card as its own device 0. Entries that are not
+    integers (UUID forms such as GPU-0f1e..., stray commas) are ignored, because there is
+    nothing in nvidia-smi's index column to match them against.
     """
     env = os.environ if env is None else env
-    requested = (env.get("FRANKPEP_DOCK_BACKEND") or DEFAULT_DOCK_BACKEND).strip().lower()
+    usable = require_gpus(runner=runner)
+    raw = env.get("CUDA_VISIBLE_DEVICES")
 
-    if requested == DEFAULT_DOCK_BACKEND:
-        return DEFAULT_DOCK_BACKEND, "default CPU Vina"
-    if requested not in DOCK_BACKENDS:
-        return (DEFAULT_DOCK_BACKEND,
-                f"unknown backend {requested!r}, falling back to {DEFAULT_DOCK_BACKEND}")
-    if not detect_gpus(runner=runner):
-        return DEFAULT_DOCK_BACKEND, f"{requested} requested but no GPU is visible"
-    if _binary_for(requested, env=env) is None:
-        return DEFAULT_DOCK_BACKEND, f"{requested} requested but its binary was not found"
-    return requested, f"{requested} on GPU"
+    if raw is None or not raw.strip():
+        # CUDA itself reads an empty value as "no devices", but an empty value is also what a
+        # shell leaves behind when an unset variable is expanded into it, so it is treated here
+        # as "no restriction" rather than failing a run over a blank.
+        return [gpu.index for gpu in usable]
 
+    allowed = []
+    for entry in raw.split(","):
+        try:
+            allowed.append(int(entry.strip()))
+        except ValueError:
+            continue
 
-def resolve_rescore_backend(env=None, runner=None):
-    """Decide which rescoring backend to use. Same contract as resolve_dock_backend."""
-    env = os.environ if env is None else env
-    requested = (env.get("FRANKPEP_RESCORE_BACKEND") or DEFAULT_RESCORE_BACKEND).strip().lower()
-
-    if requested == DEFAULT_RESCORE_BACKEND:
-        return DEFAULT_RESCORE_BACKEND, "default Vina scoring"
-    if requested not in RESCORE_BACKENDS:
-        return (DEFAULT_RESCORE_BACKEND,
-                f"unknown backend {requested!r}, falling back to {DEFAULT_RESCORE_BACKEND}")
-    if not detect_gpus(runner=runner):
-        return DEFAULT_RESCORE_BACKEND, f"{requested} requested but no GPU is visible"
-    if _binary_for("gnina", env=env) is None:
-        return DEFAULT_RESCORE_BACKEND, f"{requested} requested but the gnina binary was not found"
-    return requested, f"{requested} using gnina on GPU"
-
-
-def gnina_score_command(receptor_qt, ligand, env=None):
-    """Command that rescores an existing pose with GNINA's CNN, without re-docking it.
-
-    --score_only mirrors what the Vina rescore does: the pose is already optimised, what is
-    being asked is how good it looks to a different scoring function.
-    """
-    binary = _binary_for("gnina", env=env) or "gnina"
-    return [binary, "--score_only", "--receptor", receptor_qt, "--ligand", ligand]
-
-
-def parse_gnina_score(stdout):
-    """Pull the CNN affinity out of GNINA's output. None when it is not there.
-
-    GNINA prints both `CNNscore` (a pose-quality probability) and `CNNaffinity` (a pKd-like
-    number). The affinity is the one comparable in spirit to Vina's estimate, so that is what
-    the pipeline records; higher is better, which is the opposite of Vina's convention.
-    """
-    for line in (stdout or "").splitlines():
-        stripped = line.strip()
-        if stripped.startswith("CNNaffinity"):
-            parts = stripped.replace(":", " ").split()
-            for part in reversed(parts):
-                try:
-                    return float(part)
-                except ValueError:
-                    continue
-    return None
-
-
-def unidock_dock_command(receptor_qt, ligand_index_file, output_dir, center, size, env=None):
-    """Command that docks a whole batch of ligands in one Uni-Dock call.
-
-    The batch is the point: Vina pays process startup per ligand, Uni-Dock reads a list of
-    ligands and keeps the GPU busy across all of them. `center` and `size` are the gridbox the
-    pipeline already computes, passed through unchanged so the search space does not move.
-    """
-    binary = _binary_for("unidock", env=env) or "unidock"
-    return [
-        binary,
-        "--receptor", receptor_qt,
-        "--ligand_index", ligand_index_file,
-        "--dir", output_dir,
-        "--center_x", str(center[0]),
-        "--center_y", str(center[1]),
-        "--center_z", str(center[2]),
-        "--size_x", str(size[0]),
-        "--size_y", str(size[1]),
-        "--size_z", str(size[2]),
-        "--search_mode", "balance",
-    ]
+    indices = [gpu.index for gpu in usable if gpu.index in allowed]
+    if not indices:
+        found = ", ".join(str(gpu.index) for gpu in usable)
+        raise GpuUnavailableError(
+            f"CUDA_VISIBLE_DEVICES={raw!r} leaves no usable GPU. The cards that meet compute "
+            f"capability {MIN_COMPUTE_CAPABILITY:g} are at indices {found}. Set "
+            "CUDA_VISIBLE_DEVICES to a subset of those, or unset it to use all of them. This "
+            "stage is GPU-only and has no CPU fallback.")
+    return indices
 
 
 def describe_environment(env=None, runner=None):
-    """Lines describing what this machine can run. Printed at the start of a stage."""
-    gpus = detect_gpus(runner=runner)
-    lines = []
-    if not gpus:
-        lines.append("GPU: none visible; every stage runs on CPU.")
-    else:
-        for gpu in gpus:
-            cap = "unknown" if gpu.compute_cap is None else f"{gpu.compute_cap:g}"
-            memory = "unknown" if gpu.memory_mib is None else f"{gpu.memory_mib} MiB"
-            suffix = ("tensor cores available, can run co-folding models"
-                      if gpu.supports_modern_models
-                      else "no tensor cores, docking and rescoring only")
-            lines.append(f"GPU {gpu.index}: {gpu.name}, compute {cap}, {memory} ({suffix})")
+    """Lines describing what this machine can run. Printed at the start of a stage.
 
-    dock, dock_reason = resolve_dock_backend(env=env, runner=runner)
-    rescore, rescore_reason = resolve_rescore_backend(env=env, runner=runner)
-    lines.append(f"Docking backend: {dock} ({dock_reason})")
-    lines.append(f"Rescoring backend: {rescore} ({rescore_reason})")
+    A report, never a check: it does not raise, so the run log says what was seen before
+    require_gpus() or require_binary() stops the run with the specific reason.
+    """
+    gpus = detect_gpus(runner=runner)
+    if not gpus:
+        return ["GPU: none visible (nvidia-smi reported no device). This path is GPU-only; "
+                "there is no CPU fallback."]
+
+    lines = []
+    for gpu in gpus:
+        if gpu.supports_modern_models:
+            note = "can run co-folding models (bfloat16, tensor cores)"
+        elif gpu.supports_docking:
+            note = "docking and rescoring only, too old for co-folding models"
+        else:
+            note = f"unusable here, below compute capability {MIN_COMPUTE_CAPABILITY:g}"
+        lines.append(f"{_describe_gpu(gpu)} ({note})")
+
+    try:
+        indices = visible_device_indices(env=env, runner=runner)
+    except GpuUnavailableError as error:
+        lines.append(f"Usable device indices: none. {error}")
+    else:
+        lines.append("Usable device indices: " + ", ".join(str(index) for index in indices))
     return lines

@@ -121,10 +121,11 @@ python3 scripts/run_local.py \
 
 ### GPU backends (optional)
 
-The run is CPU-only unless you ask for a GPU backend. `FRANKPEP_RESCORE_BACKEND=consensus` adds
-a GNINA CNN affinity column to the final TSV; `FRANKPEP_DOCK_BACKEND=unidock` selects Uni-Dock
-for docking. Both fall back to the CPU path, with a printed reason, when no GPU or no binary is
-found. Check a machine first with `python3 scripts/gpu_check.py`; see [docs/gpu.md](docs/gpu.md).
+The run is CPU-only unless you ask for a GPU backend, and the GPU backends are GPU-only: they
+never fall back to CPU. `FRANKPEP_RESCORE_BACKEND=gnina` adds GNINA's CNN columns to the final
+TSV and requires a GPU and the `gnina` binary; if either is missing, FrankVINA 2 stops at the
+start of the stage with a message naming what to fix. Check a machine first with
+`python3 scripts/gpu_check.py`; see [docs/gpu.md](docs/gpu.md).
 
 ---
 
