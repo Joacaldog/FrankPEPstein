@@ -50,9 +50,11 @@ def run_tool(command, stdout=None, stderr=None):
     A missing or non-executable tool is reported and skipped, as sh did, and a script without a
     shebang (ENOEXEC) is handed to sh, which is how os.system used to run it.
     """
-    handle = open(stdout, "wb") if isinstance(stdout, str) else None
+    handle = None
     try:
         try:
+            if isinstance(stdout, str):
+                handle = open(stdout, "wb")
             return subprocess.run(command, stdout=handle or stdout, stderr=stderr, check=False)
         except OSError as error:
             if error.errno == errno.ENOEXEC:
