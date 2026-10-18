@@ -1,3 +1,4 @@
+import errno
 import os
 import sys
 import shutil
@@ -44,18 +45,31 @@ tqdm._instances.clear()
 
 
 def run_tool(command, stdout=None, stderr=None):
-    """Run an external tool without a shell; like os.system, a failure is not fatal here."""
-    if isinstance(stdout, str):
-        with open(stdout, "wb") as handle:
-            return subprocess.run(command, stdout=handle, stderr=stderr, check=False)
-    return subprocess.run(command, stdout=stdout, stderr=stderr, check=False)
+    """Run an external tool without a shell. Like os.system, a failure is not fatal here.
+
+    A missing or non-executable tool is reported and skipped, as sh did, and a script without a
+    shebang (ENOEXEC) is handed to sh, which is how os.system used to run it.
+    """
+    handle = open(stdout, "wb") if isinstance(stdout, str) else None
+    try:
+        try:
+            return subprocess.run(command, stdout=handle or stdout, stderr=stderr, check=False)
+        except OSError as error:
+            if error.errno == errno.ENOEXEC:
+                return subprocess.run(["/bin/sh", *command], stdout=handle or stdout,
+                                      stderr=stderr, check=False)
+            print(f"Warning: could not run {command[0]}: {error}", file=sys.stderr)
+            return None
+    finally:
+        if handle is not None:
+            handle.close()
 
 
 def move_into(folder, *paths):
     """mv paths folder, overwriting, skipping any path the tool did not produce."""
     for path in paths:
         try:
-            os.replace(path, os.path.join(folder, os.path.basename(path)))
+            shutil.move(path, os.path.join(folder, os.path.basename(path)))
         except OSError:
             pass
 
@@ -70,11 +84,13 @@ def remove_files(*paths):
 
 def strip_end_records(path):
     """sed -i '/END/d'"""
-    if os.path.exists(path):
+    try:
         with open(path, "rb") as handle:
             lines = handle.readlines()
-        with open(path, "wb") as handle:
-            handle.writelines(line for line in lines if b"END" not in line)
+    except OSError:
+        return  # missing or unreadable: sed leaves it alone too
+    with open(path, "wb") as handle:
+        handle.writelines(line for line in lines if b"END" not in line)
 
 
 
