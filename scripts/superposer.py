@@ -106,6 +106,42 @@ shutil.copy(fau_file, folder_temp)
 shutil.copy(PARAMETERS_INP_PATH, folder_temp)
 
 
+def remove_files(*paths):
+    """rm -f: delete whatever exists and ignore the rest."""
+    for path in paths:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def read_lines(path):
+    """The file's lines as bytes, or none at all if CLICK did not write it."""
+    try:
+        with open(path, "rb") as handle:
+            return handle.readlines()
+    except OSError:
+        return []
+
+
+def strip_end_records(path):
+    """sed -i '/END/d': CLICK's outputs end in END, which would cut a concatenation short."""
+    try:
+        with open(path, "rb") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return  # missing or unreadable: sed leaves it alone too
+    with open(path, "wb") as handle:
+        handle.writelines(line for line in lines if b"END" not in line)
+
+
+def concatenate(destination, *sources):
+    """cat sources > destination. A missing source contributes nothing, as with cat."""
+    with open(destination, "wb") as handle:
+        for source in sources:
+            handle.writelines(read_lines(source))
+
+
 def run_click_binary(*click_args):
     """Invoke CLICK without a shell, so paths containing spaces still work."""
     subprocess.run([CLICK_PATH, *click_args],
@@ -165,21 +201,21 @@ def run_click(file):
                                     overlap = float(
                                         line.split("=")[1].split(" ")[-1])
                                     if overlap < 100:
-                                            os.system(f'rm {log_file1} {out_file1} {sup_needed1} {file} 2> /dev/null')
+                                            remove_files(log_file1, out_file1, sup_needed1, file)
                                             break
                                     if overlap >= 100:
                                         pass_criteria += 1
                                 if "RMSD" in line:
                                     RMSD_score = float(line.split("=")[1].split(" ")[-1])
                                     if RMSD_score > RMSD_allowed:
-                                        os.system(f'rm {log_file1} {out_file1} {sup_needed1} {file} 2> /dev/null')
+                                        remove_files(log_file1, out_file1, sup_needed1, file)
                                         break
                                     if RMSD_score <= RMSD_allowed:
                                         pass_criteria += 1
                                 if "The number of matched atoms" in line:
                                     matched_Ca = float(line.split("=")[1].split(" ")[-1])
                                     if matched_Ca < cutoff:
-                                        os.system(f'rm {log_file1} {out_file1} {sup_needed1} {file} 2> /dev/null')
+                                        remove_files(log_file1, out_file1, sup_needed1, file)
                                         break
                                     if matched_Ca >= cutoff:
                                         pass_criteria += 1
@@ -187,18 +223,18 @@ def run_click(file):
                                 pass
 
             if pass_criteria >= 3:
+                name_outfile1_supneeded1 = f'merge_{sup_needed1.replace(".1.pdb", "")}'
+                log_file_tmp = (f"{name_outfile1_supneeded1}-{file_noExtension}.pdb.1.clique")
+                out_file1_tmp = (f"{file_noExtension}-{name_outfile1_supneeded1}.1.pdb")
+                sup_needed1_tmp = (f"{name_outfile1_supneeded1}-{file_noExtension}.1.pdb")
+                leftovers = (log_file1, out_file1_tmp, log_file_tmp, out_file1,
+                             sup_needed1_tmp, f"{name_outfile1_supneeded1}.pdb")
                 try:
-                    name_outfile1_supneeded1 = f'merge_{sup_needed1.replace(".1.pdb", "")}'
-                    os.system(f"sed -i '/END/d' {out_file1}")
-                    os.system(f'cat {out_file1} {sup_needed1} > {name_outfile1_supneeded1}.pdb')
+                    strip_end_records(out_file1)
+                    concatenate(f"{name_outfile1_supneeded1}.pdb", out_file1, sup_needed1)
                     
                     run_click_binary(f"{name_outfile1_supneeded1}.pdb", file)
 
-                    log_file_tmp = (f"{name_outfile1_supneeded1}-{file_noExtension}.pdb.1.clique")
-                    out_file1_tmp = (f"{file_noExtension}-{name_outfile1_supneeded1}.1.pdb")
-                    sup_needed1_tmp = (f"{name_outfile1_supneeded1}-{file_noExtension}.1.pdb")
-                    leftovers = (f"{log_file1} {out_file1_tmp} {log_file_tmp} {out_file1} "
-                                 f"{sup_needed1_tmp} {name_outfile1_supneeded1}.pdb")
                     # Write to a temporary and only then replace sup_needed1. The old
                     # `grep ... > sup_needed1` truncated the file before grep ran, so a failed
                     # CLICK merge left a 0-byte pocket behind and out_file1 (the only other copy)
@@ -206,16 +242,23 @@ def run_click(file):
                     # option either: it is in the target frame, while what follows needs the
                     # donor-complex frame. Skip the minipocket instead.
                     if not os.path.exists(sup_needed1_tmp) or os.path.getsize(sup_needed1_tmp) == 0:
-                        os.system(f'rm -f {leftovers} {sup_needed1} {file} 2> /dev/null')
+                        remove_files(*leftovers, sup_needed1, file)
                         return
-                    os.system(f"grep ' p' {sup_needed1_tmp} > {sup_needed1}.new")
+                    # grep ' p': keep the pocket chain. grep newline-terminates its last line.
+                    with open(f"{sup_needed1}.new", "wb") as handle:
+                        handle.writelines(line if line.endswith(b"\n") else line + b"\n"
+                                          for line in read_lines(sup_needed1_tmp) if b" p" in line)
                     if os.path.getsize(f"{sup_needed1}.new") == 0:
-                        os.system(f'rm -f {leftovers} {sup_needed1}.new {sup_needed1} {file} 2> /dev/null')
+                        remove_files(*leftovers, f"{sup_needed1}.new", sup_needed1, file)
                         return
                     os.replace(f"{sup_needed1}.new", sup_needed1)
-                    os.system(f'rm -f {leftovers} 2> /dev/null')
-                except:
-                    pass
+                    remove_files(*leftovers)
+                except Exception:
+                    # A file this step writes could not be written (disk full, a directory in the
+                    # way). Carrying on would use sup_needed1 still in the target frame, which the
+                    # comment above rules out, so skip the minipocket as the failed merge would.
+                    remove_files(*leftovers, f"{sup_needed1}.new", sup_needed1, file)
+                    return
 
                 complex_file = (f"{pepbdb_folder}/{folder}/peptide_complex.pdb")
                 # print("complex_file", complex_file)
@@ -255,20 +298,19 @@ def run_click(file):
                         patch_file = (f'patch_file_{folder}_{"-".join(patch)}.pdb')
                         io.save(patch_file, select=SelectFragOnly())
                         minipocket_file_noExtension = file_noExtension
-                        os.system(f"sed -i '/END/d' {sup_needed1}")
+                        strip_end_records(sup_needed1)
                         super_file = (f"super_{minipocket_file_noExtension}.pdb")
                         # Truncate, do not append: `>>` reused a stale super_file left behind by an
                         # aborted run, silently merging two different superpositions.
-                        cmd_merge_peptide_pocket = f"cat {sup_needed1} {patch_file} > {super_file}"
-                        os.system(cmd_merge_peptide_pocket)
+                        concatenate(super_file, sup_needed1, patch_file)
                         
                         run_click_binary(super_file, f"{Faufile_noExtension}.pdb")
 
                         out_file2 = (f'{Faufile_noExtension}-{super_file.replace(".pdb", "")}.1.pdb')
                         sup_needed2 = (f'{super_file.replace(".pdb", "")}-{Faufile_noExtension}.1.pdb')
                         log_file2 = (f'{super_file.replace(".pdb", "")}-{Faufile_noExtension}.pdb.1.clique')
-                        os.system(f"sed -i '/END/d' {sup_needed2}")
-                        os.system(f"rm {out_file2} {log_file2} {sup_needed1} {super_file} {patch_file} {file}")
+                        strip_end_records(sup_needed2)
+                        remove_files(out_file2, log_file2, sup_needed1, super_file, patch_file, file)
                     except Exception as e:
                         print(f"DEBUG: superposition step failed for {file}: {e}")
 
@@ -297,10 +339,7 @@ def run_click(file):
                     except Exception as e:
                         print(f"DEBUG: Error loading final superposed file {sup_needed2}: {e}")
 
-                    try:
-                        os.system(f"rm {sup_needed2}")
-                    except:
-                        pass
+                    remove_files(sup_needed2)
                     new_peptide = []
                     if not pocket:
                         # No chain 'p' was recovered from the superposed file, so there is nothing to
@@ -365,4 +404,4 @@ os.chdir(folder_temp)
 Parallel(n_jobs=threads)(delayed(run_click)(file) for file in tqdm(os.listdir(folder_minipockets), total=len(
     os.listdir(folder_minipockets)), desc="aligning minipockets to target_pocket and defining patches"))
 os.chdir("../")
-os.system("rm -r " + folder_temp)
+shutil.rmtree(folder_temp, ignore_errors=True)
