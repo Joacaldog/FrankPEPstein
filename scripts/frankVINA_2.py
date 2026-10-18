@@ -16,6 +16,10 @@ import subprocess
 import random  # Para hacer la muestra aleatoria
 from collections import Counter
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gpu_backends import (  # noqa: E402
+    describe_environment, gnina_score_command, parse_gnina_score, resolve_rescore_backend)
+
 initial_path = sys.argv[1]
 # The per-peptide MODELLER refinement and the screening dock run against the pocket shell only,
 # which is what makes this stage affordable. That also means the screening score ignores the rest
@@ -207,10 +211,17 @@ def rescore_against_full_receptor(top_dir):
     if len(rows) < 2:
         return
 
+    # Opt-in second opinion from GNINA's CNN. It is added as a column, never used to drop a
+    # candidate: a scoring function the pipeline has not been calibrated against gets to inform
+    # the ranking, not to decide it.
+    rescore_backend, _ = resolve_rescore_backend()
+    want_cnn = rescore_backend in ("gnina", "consensus")
+
     rescored = []
     for energy_value, base in rows[1:]:
         pose = os.path.join(top_dir, f"MinPEP_{base}_out.pdbqt")
         score = ""
+        cnn_score = ""
         if os.path.exists(pose):
             result = subprocess.run(
                 [VINA_PATH, "--verbosity", "0", "--score_only",
@@ -220,17 +231,36 @@ def rescore_against_full_receptor(top_dir):
                 if "Estimated" in line:
                     score = line.split(":")[1].split()[0]
                     break
-        rescored.append((energy_value, base, score))
+            if want_cnn:
+                cnn_result = subprocess.run(
+                    gnina_score_command(receptor_qt, pose),
+                    check=False, capture_output=True, text=True)
+                cnn_value = parse_gnina_score(cnn_result.stdout)
+                if cnn_value is not None:
+                    cnn_score = f"{cnn_value:.3f}"
+        rescored.append((energy_value, base, score, cnn_score))
 
+    header = "AffinityBindingPred_pocket\tPEP\tAffinityBindingPred_fullReceptor"
+    if want_cnn:
+        header += "\tCNNaffinity_fullReceptor"
     with open(tsv, "w") as handle:
-        handle.write("AffinityBindingPred_pocket\tPEP\tAffinityBindingPred_fullReceptor\n")
-        for energy_value, base, score in rescored:
-            handle.write(f"{energy_value}\t{base}\t{score}\n")
+        handle.write(header + "\n")
+        for energy_value, base, score, cnn_score in rescored:
+            row = f"{energy_value}\t{base}\t{score}"
+            if want_cnn:
+                row += f"\t{cnn_score}"
+            handle.write(row + "\n")
     print(f"Rescored {sum(1 for r in rescored if r[2])} of {len(rescored)} candidates "
           f"against the full receptor.")
+    if want_cnn:
+        print(f"GNINA CNN affinity recorded for {sum(1 for r in rescored if r[3])} of "
+              f"{len(rescored)} candidates (higher is better, unlike the Vina columns).")
 
 
 def main():
+    for line in describe_environment():
+        print(line)
+
     # 1) Crear temp_folder
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")

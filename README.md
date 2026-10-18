@@ -119,6 +119,13 @@ python3 scripts/run_local.py \
 3.  Calculates the Gridbox parameters locally.
 4.  Executes `scripts/run_FrankPEPstein.py` with the correct arguments.
 
+### GPU backends (optional)
+
+The run is CPU-only unless you ask for a GPU backend. `FRANKPEP_RESCORE_BACKEND=consensus` adds
+a GNINA CNN affinity column to the final TSV; `FRANKPEP_DOCK_BACKEND=unidock` selects Uni-Dock
+for docking. Both fall back to the CPU path, with a printed reason, when no GPU or no binary is
+found. Check a machine first with `python3 scripts/gpu_check.py`; see [docs/gpu.md](docs/gpu.md).
+
 ---
 
 ## Developer Guide
