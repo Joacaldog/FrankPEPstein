@@ -11,7 +11,6 @@ import glob
 import warnings
 import itertools
 from Bio.PDB.StructureBuilder import *
-import copy
 import numpy as np
 warnings.simplefilter('ignore')
 import argparse
@@ -90,19 +89,20 @@ def save_pdb(peptide_ordered):
     builder.init_seg(" ")
     builder.init_model(0)
     builder.init_chain("x")
-    final_peptide2 = copy.deepcopy(peptide_ordered)
+    # Copy atoms only. A deepcopy of a residue follows its parent links and duplicates the whole
+    # patch structure; the copy is only there so res.add() re-parents a copy, not the shared atom.
     j = 0
-    for residue in final_peptide2:
+    for residue in peptide_ordered:
         j += 1
         res_name = residue.get_resname()
         builder.init_residue(res_name, " ", j, " ")
         res = builder.residue
         for atom in residue.get_atoms():
-            res.add(atom)
+            res.add(atom.copy())
     structure2 = builder.get_structure()
     io = PDBIO()
     io.set_structure(structure2)
-    sequence = sequence_of(final_peptide2)
+    sequence = sequence_of(peptide_ordered)
     if sequence is None:
         return None
     peptide_name = "pep_" + sequence
@@ -424,6 +424,12 @@ def combinator():
         if len_comb >= MAX_COMBINATIONS:
             combination_res_list = random.sample(combination_res_list, MAX_COMBINATIONS)
         short_combinations = 0
+        # Backbone centroid of every residue, computed once. The pairwise loop below used to
+        # recompute both centroids for every ordered pair of every combination. Keyed by id(),
+        # because Biopython residue equality ignores the structure id, so residues from two
+        # patch files with the same chain and number compare equal.
+        centroids = {id(res): np.average(np.array([res["N"].coord, res["CA"].coord, res["C"].coord]), axis=0)
+                     for res in res_dict_pull.values()}
         for final_comb in tqdm(combination_res_list, total=len(combination_res_list), desc="Working on each combination...", position=0, leave=True):
             res_dist_dict = {}
             res_dist_list = []
@@ -439,10 +445,8 @@ def combinator():
             for CA_prox in combination_NC_list:
                 residue1 = CA_prox[0]
                 residue2 = CA_prox[1]
-                residue1_CA_coord = (np.average(np.array([residue1["N"].coord, residue1["CA"].coord,
-                                                            residue1["C"].coord]), axis=0))
-                residue2_CA_coord = (np.average(np.array([residue2["N"].coord, residue2["CA"].coord,
-                                                            residue2["C"].coord]), axis=0))
+                residue1_CA_coord = centroids[id(residue1)]
+                residue2_CA_coord = centroids[id(residue2)]
                 dist_CA = np.linalg.norm(
                     residue1_CA_coord - residue2_CA_coord)
                 if res_dist_dict.get(residue1) is None:
