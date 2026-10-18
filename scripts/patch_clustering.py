@@ -5,9 +5,10 @@ from tqdm import tqdm
 import fnmatch
 from Bio.PDB import *
 import Bio.PDB
-pdbio = Bio.PDB.PDBIO()
 parser = Bio.PDB.MMCIFParser()
 import glob
+import shutil
+from io import StringIO
 import warnings
 import itertools
 from Bio.PDB.StructureBuilder import *
@@ -82,146 +83,78 @@ folder_output = (f"frankPEPstein_{winsize}")
 if not os.path.exists(folder_output):
     os.makedirs(folder_output)
 
-def save_pdb(peptide_ordered):
-    id_pep = "pep"
+def build_peptide(peptide_ordered):
+    """The assembled peptide as its own structure: chain 'x', residues numbered from 1.
+
+    Atoms are copied rather than moved, so res.add() never re-parents an atom that still
+    belongs to a patch structure shared with other peptides and threads.
+    """
     builder = StructureBuilder()
-    builder.init_structure(id_pep)
+    builder.init_structure("pep")
     builder.init_seg(" ")
     builder.init_model(0)
     builder.init_chain("x")
-    # Copy atoms only. A deepcopy of a residue follows its parent links and duplicates the whole
-    # patch structure; the copy is only there so res.add() re-parents a copy, not the shared atom.
-    j = 0
-    for residue in peptide_ordered:
-        j += 1
-        res_name = residue.get_resname()
-        builder.init_residue(res_name, " ", j, " ")
-        res = builder.residue
+    for j, residue in enumerate(peptide_ordered, start=1):
+        builder.init_residue(residue.get_resname(), " ", j, " ")
         for atom in residue.get_atoms():
-            res.add(atom.copy())
-    structure2 = builder.get_structure()
-    io = PDBIO()
-    io.set_structure(structure2)
-    sequence = sequence_of(peptide_ordered)
-    if sequence is None:
-        return None
-    peptide_name = "pep_" + sequence
-    peptide_file = folder_output + "/" + peptide_name + ".pdb"
-    io.save(peptide_file, preserve_atom_numbering=False)
-    # time.sleep(0.5)
-    return peptide_file
+            builder.residue.add(atom.copy())
+    return builder.get_structure()
 
 
-def pdb_parser(peptide_file):
-    pdb_file_no_extension = peptide_file.replace(".pdb", "")
-    cmd_remove_END = (
-        f'cat {peptide_file} 2> /dev/null | grep -v "END" > {pdb_file_no_extension}_noEND.pdb')
+def add_backbone_conect(pdb_text):
+    """Drop END records and append CONECT records for the peptide bonds, then END.
 
-    os.system(cmd_remove_END)
-
-    with open(pdb_file_no_extension + "_connects.txt", "w") as outfile:
-        bond_list = []
-        with open(peptide_file) as f:
-            for line in f.readlines():
-                atom_number = line[6:11].strip()
-                atom_name = line[12:16].strip()
-                if atom_name == "N" or atom_name == "C":
-                    if atom_number != "1":
-                        bond_list.append(atom_number)
-        bond_list = bond_list[:-1]
-        number_of_bonds = len(bond_list)
-        for i in range(0, number_of_bonds, 2):
-            first_atom = bond_list[i].rjust(5)
-            second_atom = bond_list[i + 1].rjust(5)
-            output = ("CONECT{}{}\n").format(
-                first_atom, second_atom)
-            outfile.write(output)
-        outfile.write("END")
-
-    os.system(("rm -f {}.pdb 2> /dev/null").format(pdb_file_no_extension))
-    merge_files = ("cat {f1}_noEND.pdb {f1}_connects.txt > {f1}.pdb 2> /dev/null").format(
-        f1=pdb_file_no_extension)
-    os.system(merge_files)
-    os.system(("rm -f {}_noEND.pdb 2> /dev/null").format(pdb_file_no_extension))
-    os.system(("rm -f {}_connects.txt 2> /dev/null").format(pdb_file_no_extension))
-    return pdb_file_no_extension
-    
-def kmerizator(pdb_file_no_extension, k_mers_list):
-    file = pdb_file_no_extension
-    class SelectFragOnly(Select):
-        """
-        Select fragment residues only
-        """
-
-        def accept_residue(self, residue):
-            if (residue in fragment):
-                return True  # Accept residue
-            else:
-                return False  # Discard residue
-            
-    # Parse filename command line arguments with DOS/Unix-save wildcard treatment
-
-    filenames = []
-    file = f"{file}"
-    filenames.append(file)
-    # ​
-    # Loop over all PDB files
-    for filename in filenames:
-        try:
-            # ​
-            # Split filename into /path/basename.ext
-            (path, ext) = os.path.splitext(filename)
-            basename = os.path.basename(path)
-        # ​
-        # Open file
-            if ext == '.gz':
-                fp = gzip.open(filename)
-            else:
-                fp = open(filename, 'r')
-        # ​
-        # Parse PDB
-            parser = PDBParser()
-            structure = parser.get_structure(basename, fp)
-
-            # Prepare writer
-            io = PDBIO()
-            io.set_structure(structure)
-        # Iterate over PDB structure
-            for model in structure:
-                for chain in model:
-                    residues = [residue for residue in chain]  # Get residues as list
-                    # Calculate last index permitting full windows size
-                    if len(residues) >= winsize:
-                        endidx = len(residues) - winsize + 1
-                        # print(endidx)
-                        # Iterate over residues
-                        for residx, residue in enumerate(residues[:endidx]):
-                            fragment = []  # Empty protein fragment (peptide)
-                            # Iterate over protein fragment of size winsize
-                            for residx2, residue in enumerate(residues[residx:residx + winsize]):
-                                fragment.append(residue)  # Add residue to protein fragment
-                            # Write protein fragment to disk (in PDB format)
-                            kmer_name = sequence_of(fragment)
-                            if kmer_name is not None and kmer_name not in k_mers_list:
-                                k_mers_list.append(kmer_name)
-                                io.save(f'{folder_output}/frag_{kmer_name}.pdb', select=SelectFragOnly())
-                                pdb_parser(f'{folder_output}/frag_{kmer_name}.pdb')
-                            # os.system(f'rm sequence_analysis_{kmer_name}.txt 2> /dev/null')
+    The atom numbers are taken from the N and C records in order: every C is bonded to the N
+    that follows it. The first N (atom 1) and the last C have no partner.
+    """
+    bond_list = []
+    for line in pdb_text.splitlines():
+        atom_number = line[6:11].strip()
+        atom_name = line[12:16].strip()
+        if atom_name in ("N", "C") and atom_number != "1":
+            bond_list.append(atom_number)
+    bond_list = bond_list[:-1]
+    body = "".join(line for line in pdb_text.splitlines(keepends=True) if "END" not in line)
+    conect = "".join(f"CONECT{bond_list[i].rjust(5)}{bond_list[i + 1].rjust(5)}\n"
+                     for i in range(0, len(bond_list), 2))
+    return body + conect + "END"
 
 
-                    if len(residues) < winsize:
-                        fragment = residues
-                        kmer_name = sequence_of(fragment)
-                        if kmer_name is None:
-                            continue
-                        io.save(f'{folder_output}/frag_{kmer_name}.pdb', select=SelectFragOnly())
-                        pdb_parser(f'{folder_output}/frag_{kmer_name}.pdb')
-                        # os.system(f'rm sequence_analysis_{kmer_name}.txt 2> /dev/null')
-                        
+def fragment_windows(sequence, claimed):
+    """The k-mers of one peptide that it should write, as (start, k-mer) pairs.
 
-        except:
-            continue
-  
+    A peptide shorter than winsize is written whole. Otherwise each window of length winsize is
+    written by the first peptide that contains it; `claimed` carries that across peptides.
+    """
+    if len(sequence) < winsize:
+        return [(0, sequence)]
+    windows = []
+    for start in range(len(sequence) - winsize + 1):
+        kmer = sequence[start:start + winsize]
+        if kmer not in claimed:
+            claimed.add(kmer)
+            windows.append((start, kmer))
+    return windows
+
+
+def write_fragments(peptide_ordered, windows):
+    """Write frag_<k-mer>.pdb for each window, in memory up to the single write per file."""
+    structure = build_peptide(peptide_ordered)
+    residues = list(structure[0]["x"])
+    pdb_writer = PDBIO()
+    pdb_writer.set_structure(structure)
+    for start, kmer in windows:
+        fragment_ids = {residue.get_id() for residue in residues[start:start + len(kmer)]}
+
+        class SelectFragOnly(Select):
+            def accept_residue(self, residue):
+                return residue.get_id() in fragment_ids
+
+        buffer = StringIO()
+        pdb_writer.save(buffer, select=SelectFragOnly(), preserve_atom_numbering=False)
+        with open(f"{folder_output}/frag_{kmer}.pdb", "w") as handle:
+            handle.write(add_backbone_conect(buffer.getvalue()))
+
 
 def remove_residue(residues, target):
     """Remove `target` itself from `residues`.
@@ -284,8 +217,7 @@ if len([x for x in os.listdir(".") if "patch_file" in x]) > 2:
             os.makedirs("outlier_folder")
         for outlier in outliers_3d:
             file = outlier[1]
-            # print(f"mv {file} outlier_folder")
-            os.system(f"mv {file} outlier_folder")
+            shutil.move(file, "outlier_folder")
 
 def combinator():
     res_dict = {}
@@ -294,8 +226,8 @@ def combinator():
     if len([x for x in os.listdir(".") if "patch_file" in x]) == 0:
         print("No patches files in folder")
     if len([x for x in os.listdir(".") if "patch_file" in x]) <= 1 and len([x for x in os.listdir(".") if "patch_file" in x]) > 0:
-        cmd_cp = (f"cp patch_file* {folder_output}")
-        os.system(cmd_cp)
+        for patch_file in glob.glob("patch_file*"):
+            shutil.copy(patch_file, folder_output)
     if len([x for x in os.listdir(".") if "patch_file" in x]) > 1:
         for file in tqdm(os.listdir("."), total=len(os.listdir(".")), desc="loading structures", position=0, leave=True):
             try:
@@ -540,18 +472,23 @@ def combinator():
 def main():
     final_peptides_list = combinator()
     if len(final_peptides_list) > 0:
-        def frag_min(peptide_ordered, k_mers_list):
-            peptide_file = save_pdb(peptide_ordered)
-            if peptide_file is None:
-                return
-            kmerizator(peptide_file, k_mers_list)
-            os.system(f"rm -f {peptide_file} 2> /dev/null")
-
-        k_mers_list = []
-        Parallel(n_jobs=threads, backend="threading")(delayed(frag_min)(peptide_ordered, k_mers_list) for peptide_ordered in tqdm(final_peptides_list, total=len(final_peptides_list), 
+        # Decide which peptide writes each k-mer before any thread starts, in peptide order.
+        # The threads used to test-then-append a shared k_mers_list, so two of them could claim
+        # the same k-mer and write, rewrite and delete the same frag_*.pdb and its temp files at
+        # once, and which conformation survived depended on timing. Now every file has exactly
+        # one writer, and it is the one a single-threaded run would pick.
+        claimed = set()
+        jobs = []
+        for peptide_ordered in final_peptides_list:
+            sequence = sequence_of(peptide_ordered)
+            if sequence is None:
+                continue
+            windows = fragment_windows(sequence, claimed)
+            if windows:
+                jobs.append((peptide_ordered, windows))
+        Parallel(n_jobs=threads, backend="threading")(delayed(write_fragments)(peptide_ordered, windows) for peptide_ordered, windows in tqdm(jobs, total=len(jobs),
                                                                                          desc=f"generating peptides of length {winsize}", position=0, leave=True))
     os.chdir(folder_output)
-    os.system("rm *noEND.pdb *connects.txt 2> /dev/null")
-        
+
 if __name__ == '__main__':
     main()
