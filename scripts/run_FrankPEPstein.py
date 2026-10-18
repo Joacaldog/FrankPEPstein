@@ -171,7 +171,8 @@ def main():
                os.makedirs(all_patches_dir)
            
            print("Moving patch files to 'all_patches_found'...")
-           os.system(f"mv patch_file_*.pdb {all_patches_dir} 2> /dev/null")
+           for patch_file in glob.glob("patch_file_*.pdb"):
+               os.replace(patch_file, os.path.join(all_patches_dir, patch_file))
 
     else:
         print(f"Error: {output_superposer_path} not found.")
