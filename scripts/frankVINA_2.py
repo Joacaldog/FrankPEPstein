@@ -258,18 +258,25 @@ def rescore_against_full_receptor(top_dir):
     want_cnn = requested_rescore_backend() == "gnina"
 
     rescored = []
+    first_error = None
     for energy_value, base in rows[1:]:
         pose = os.path.join(top_dir, f"MinPEP_{base}_out.pdbqt")
         score = ""
         if os.path.exists(pose):
             result = subprocess.run(
-                [VINA_PATH, "--verbosity", "0", "--score_only",
+                # --autobox: Vina 1.2 refuses --score_only without a box ("Grid box dimensions
+                # must be greater than 0"), which left this column empty on every real run.
+                [VINA_PATH, "--verbosity", "0", "--score_only", "--autobox",
                  "--receptor", receptor_qt, "--ligand", pose],
                 check=False, capture_output=True, text=True)
             for line in result.stdout.splitlines():
                 if "Estimated" in line:
                     score = line.split(":")[1].split()[0]
                     break
+            if not score and first_error is None:
+                output = (result.stderr + result.stdout).strip()
+                first_error = next((l.strip() for l in output.splitlines() if "error:" in l.lower()),
+                                   output[:200])
         rescored.append([energy_value, base, score, pose])
 
     cnn_by_pose = {}
@@ -290,6 +297,8 @@ def rescore_against_full_receptor(top_dir):
             handle.write("\t".join(cells) + "\n")
     print(f"Rescored {sum(1 for row in rescored if row[2])} of {len(rescored)} candidates "
           f"against the full receptor.")
+    if first_error:
+        print(f"WARNING: Vina gave no full-receptor score for some candidates. First error: {first_error}")
     if want_cnn:
         scored = sum(1 for row in rescored if cnn_by_pose.get(row[3]))
         print(f"GNINA CNN scores recorded for {scored} of {len(rescored)} candidates. "
