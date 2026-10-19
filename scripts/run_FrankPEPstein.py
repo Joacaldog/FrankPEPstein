@@ -107,6 +107,9 @@ def main():
 
         # 3. Patch Clustering & FrankVINA 2
         print(f"--- Checking for patches ---")
+        # A failed later stage must fail the run: callers (run_local.py, the notebook) only see
+        # the exit status, and printing "Error" while exiting 0 let them report success.
+        stage_failed = False
         patch_files = [x for x in os.listdir(".") if "patch_file" in x]
         
         if len(patch_files) == 0:
@@ -121,6 +124,7 @@ def main():
 
             cluster_dir = f"frankPEPstein_{pep_size}"
             if clustering_rc != 0:
+                stage_failed = True
                 print(f"Error: patch_clustering exited with code {clustering_rc}; skipping FrankVINA 2.")
             elif os.path.exists(cluster_dir):
                 os.chdir(cluster_dir)
@@ -145,6 +149,7 @@ def main():
                     # Do NOT clean up after a failure: the fragments are the only record of what
                     # stage 4 was given, and a bare `rm *` here used to erase them while the run
                     # still reported success.
+                    stage_failed = True
                     print(f"Error: FrankVINA 2 exited with code {vina2_rc}; leaving {cluster_dir} intact for inspection.")
                 else:
                     # Narrow cleanup of the staged inputs only, never a bare glob.
@@ -157,6 +162,7 @@ def main():
                 # Return to the superposer output dir: the patch-file move below assumes it.
                 os.chdir(output_superposer_path)
             else:
+                 stage_failed = True
                  print(f"Error: {cluster_dir} not created.")
 
         elif len(patch_files) == 1:
@@ -172,6 +178,9 @@ def main():
            
            print("Moving patch files to 'all_patches_found'...")
            os.system(f"mv patch_file_*.pdb {all_patches_dir} 2> /dev/null")
+
+        if stage_failed:
+            sys.exit(1)
 
     else:
         print(f"Error: {output_superposer_path} not found.")
