@@ -74,28 +74,35 @@ def main():
     else:
         log("Downloading Databases & Tools...", GREEN)
         
-        # Check if archive exists
+        # Check if archive exists (a manually copied files.tar.gz in the repo root is used as-is)
         if not os.path.exists(archive_name):
-            # Try gdown first
+            # gdown 5.0 removed --id; passing the id positionally works on every gdown version.
             if check_command("gdown"):
-                subprocess.run(f"gdown --id {files_id} -O {archive_name}", shell=True)
+                gdown_cmd = ["gdown", files_id, "-O", archive_name]
             else:
                 log("⚠️ gdown not found. Attempting to install in current python...", YELLOW)
-                subprocess.run(f"{sys.executable} -m pip install gdown", shell=True)
-                subprocess.run(f"gdown --id {files_id} -O {archive_name}", shell=True)
-        
-        if os.path.exists(archive_name):
-            log("Extracting archive...", GREEN)
-            # Try pigz for speed
-            if check_command("pigz"):
-                subprocess.run(f"tar -I pigz -xf {archive_name}", shell=True)
-            else:
-                subprocess.run(f"tar -xf {archive_name}", shell=True)
-            log("✅ Extraction complete.", GREEN)
+                subprocess.run([sys.executable, "-m", "pip", "install", "gdown"])
+                gdown_cmd = [sys.executable, "-m", "gdown", files_id, "-O", archive_name]
+            ret = subprocess.run(gdown_cmd)
+            if ret.returncode != 0:
+                if os.path.exists(archive_name):
+                    os.remove(archive_name)  # drop a partial download so the next run retries
+                log(f"❌ Failed to download {archive_name} (gdown exit code {ret.returncode}).", RED)
+                log(f"Download it manually from https://drive.google.com/file/d/{files_id} "
+                    f"into the repository root and rerun this script.", RED)
+                sys.exit(1)
+
+        log("Extracting archive...", GREEN)
+        # Try pigz for speed
+        if check_command("pigz"):
+            ret = subprocess.run(f"tar -I pigz -xf {archive_name}", shell=True)
         else:
-            log("❌ Failed to download files.tar.gz", RED)
-            # Don't exit, might be partially setup manually? 
-    
+            ret = subprocess.run(f"tar -xf {archive_name}", shell=True)
+        if ret.returncode != 0 or not (os.path.exists("DB") and os.path.exists("utilities")):
+            log(f"❌ Extracting {archive_name} did not produce DB/ and utilities/.", RED)
+            sys.exit(1)
+        log("✅ Extraction complete.", GREEN)
+
     # 4. Utilities Setup
     log("Configuring Utilities...", GREEN)
     utilities_dir = os.path.join(repo_root, "utilities")
