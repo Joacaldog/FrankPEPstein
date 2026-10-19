@@ -76,7 +76,7 @@ def main():
         
         # Check if archive exists (a manually copied files.tar.gz in the repo root is used as-is)
         if not os.path.exists(archive_name):
-            # gdown 5.0 removed --id; passing the id positionally works on every gdown version.
+            # gdown 6 rejects --id (5.2 still accepts it); the positional id works on both.
             if check_command("gdown"):
                 gdown_cmd = ["gdown", files_id, "-O", archive_name]
             else:
