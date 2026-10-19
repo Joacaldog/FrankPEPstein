@@ -16,6 +16,15 @@ import subprocess
 import random  # Para hacer la muestra aleatoria
 from collections import Counter
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gnina_rescore  # noqa: E402
+import gpu_backends  # noqa: E402
+
+# Which scoring function reports on the final poses. "vina" is the pipeline as it has always
+# been and needs no GPU; "gnina" adds GNINA's CNN columns and requires one, with no CPU
+# fallback: if the card or the binary is missing, the stage stops and says so.
+RESCORE_BACKENDS = ("vina", "gnina")
+
 initial_path = sys.argv[1]
 # The per-peptide MODELLER refinement and the screening dock run against the pocket shell only,
 # which is what makes this stage affordable. That also means the screening score ignores the rest
@@ -191,6 +200,45 @@ def scoring_filter(n_submitted=None):
             print(f"Note: only {written} of the {selected_peps} requested candidates had both a "
                   f"score and a pose.")
 
+def requested_rescore_backend():
+    """Which scoring function was asked for, from FRANKPEP_RESCORE_BACKEND.
+
+    A typo raises instead of defaulting: a run that was launched expecting GNINA columns and
+    quietly produced Vina-only ones is the failure this whole path is built to avoid.
+    """
+    requested = (os.environ.get("FRANKPEP_RESCORE_BACKEND") or "vina").strip().lower()
+    if requested not in RESCORE_BACKENDS:
+        raise ValueError(
+            f"FRANKPEP_RESCORE_BACKEND={requested!r} is not one of {RESCORE_BACKENDS}.")
+    return requested
+
+
+def _format_cnn(value):
+    """A CNN number for the TSV. An empty cell means GNINA did not report one, never 0."""
+    return "" if value is None else f"{value:.3f}"
+
+
+def cnn_rescore(poses, receptor_qt):
+    """GNINA's CNN scores for the poses that exist, keyed by pose path.
+
+    GPU only: gnina_rescore raises GpuUnavailableError when the card or the binary is missing,
+    and that is left to propagate. Asking for GNINA and getting Vina back is what no fallback
+    means here.
+
+    Individual poses are skipped rather than aborting the stage, because by this point the
+    expensive work is done and the Vina ranking is already written; every skip is printed with
+    the command and GNINA's stderr, so nothing is lost quietly.
+    """
+    existing = [pose for pose in poses if os.path.exists(pose)]
+    if not existing:
+        print("No poses to rescore with GNINA.")
+        return {}
+    results = gnina_rescore.rescore_poses(receptor_qt, existing, on_error="skip")
+    for skipped in results.skipped:
+        print(f"GNINA skipped a pose: {skipped.describe()}")
+    return results
+
+
 def rescore_against_full_receptor(top_dir):
     """Rescore the selected poses against the whole protein, not just the pocket shell.
 
@@ -207,6 +255,8 @@ def rescore_against_full_receptor(top_dir):
     if len(rows) < 2:
         return
 
+    want_cnn = requested_rescore_backend() == "gnina"
+
     rescored = []
     for energy_value, base in rows[1:]:
         pose = os.path.join(top_dir, f"MinPEP_{base}_out.pdbqt")
@@ -220,17 +270,42 @@ def rescore_against_full_receptor(top_dir):
                 if "Estimated" in line:
                     score = line.split(":")[1].split()[0]
                     break
-        rescored.append((energy_value, base, score))
+        rescored.append([energy_value, base, score, pose])
 
+    cnn_by_pose = {}
+    if want_cnn:
+        cnn_by_pose = cnn_rescore([row[3] for row in rescored], receptor_qt)
+
+    header = ["AffinityBindingPred_pocket", "PEP", "AffinityBindingPred_fullReceptor"]
+    if want_cnn:
+        header += ["CNNaffinity_fullReceptor", "CNNscore_fullReceptor"]
     with open(tsv, "w") as handle:
-        handle.write("AffinityBindingPred_pocket\tPEP\tAffinityBindingPred_fullReceptor\n")
-        for energy_value, base, score in rescored:
-            handle.write(f"{energy_value}\t{base}\t{score}\n")
-    print(f"Rescored {sum(1 for r in rescored if r[2])} of {len(rescored)} candidates "
+        handle.write("\t".join(header) + "\n")
+        for energy_value, base, score, pose in rescored:
+            cells = [energy_value, base, score]
+            if want_cnn:
+                scores = cnn_by_pose.get(pose)
+                cells.append(_format_cnn(scores.cnn_affinity if scores else None))
+                cells.append(_format_cnn(scores.cnn_score if scores else None))
+            handle.write("\t".join(cells) + "\n")
+    print(f"Rescored {sum(1 for row in rescored if row[2])} of {len(rescored)} candidates "
           f"against the full receptor.")
+    if want_cnn:
+        scored = sum(1 for row in rescored if cnn_by_pose.get(row[3]))
+        print(f"GNINA CNN scores recorded for {scored} of {len(rescored)} candidates. "
+              f"CNNaffinity is pKd-like, so higher is better there, unlike the Vina columns.")
 
 
 def main():
+    for line in gpu_backends.describe_environment():
+        print(line)
+
+    # Preflight the GPU path before the hours of MODELLER work rather than after it: a missing
+    # card or a missing binary should cost a second, not a whole run's refinement.
+    if requested_rescore_backend() == "gnina":
+        gpu_backends.require_gpus()
+        gpu_backends.require_binary("gnina")
+
     # 1) Crear temp_folder
     if not os.path.exists("temp_folder"):
         os.makedirs("temp_folder")
